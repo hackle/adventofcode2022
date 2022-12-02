@@ -41,8 +41,8 @@ roundScore (Scissors, Scissors) = 3
 roundScore (Scissors, Paper) = 0
 roundScore (Scissors, Rock) = 6
 
-data PSR = Paper | Scissors | Rock
-data Result = Win | Lose | Draw
+data PSR = Paper | Scissors | Rock deriving (Show, Eq)
+data Result = Win | Lose | Draw deriving (Show, Eq)
 
 pPsr :: Parser String PSR
 pPsr = choice [
@@ -51,18 +51,14 @@ pPsr = choice [
     pure Rock <$> oneOf "AX"
     ]
 
-pResult = choice $ (\(c, r) -> pure r <$> char c) <$> [('X', Lose), ('Y', Draw), ('Z', Win)]
+charForResults = [('X', Lose), ('Y', Draw), ('Z', Win)]
 
-pPsrPair :: Parser String (PSR, PSR)
-pPsrPair = do
-    psr1 <- pPsr
-    _ <- space
-    psr2 <- pPsr
-    return (psr1, psr2)
+mapResult :: (Char, Result) -> Parser String Result
+mapResult (c, r) = pure r <$> char c
 
-pPsrs :: Parser String [(PSR, PSR)]
-pPsrs = many $ pPsrPair <* optional endOfLine
+pResult = choice $ mapResult <$> charForResults
 
+-- round 2 only
 pResults :: Parser String [(PSR, Result)]
 pResults = many $ pPsrResult <* optional endOfLine
 
@@ -72,3 +68,14 @@ pPsrResult = do
     _ <- space
     result <- pResult
     return (psr, result)
+
+-- round 1 only
+pPsrs :: Parser String [(PSR, PSR)]
+pPsrs = many $ pPsrPair <* optional endOfLine
+
+pPsrPair :: Parser String (PSR, PSR)
+pPsrPair = do
+    psr1 <- pPsr
+    _ <- space
+    psr2 <- pPsr
+    return (psr1, psr2)
