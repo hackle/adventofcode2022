@@ -22,7 +22,10 @@ maintainer:         hacklew@hotmail.com
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  AdventOfCode
+    exposed-modules:  
+        AdventOfCode
+        AdventOfCode.Day1
+        AdventOfCode.Day2
 
     -- Modules included in this library but not exported.
     -- other-modules:
