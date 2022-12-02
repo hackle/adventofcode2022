@@ -21,9 +21,23 @@ maxCalorie raw = sortBy descending sums & take 3 & foldl1 (+) where
 -- day 2
 psr :: String -> Int
 psr raw = 
-    case parse pPsrs "" raw of
+    case parse pResults "" raw of
         Left e -> error $ show e
-        Right pairs -> foldl (\s r@(x, y) -> s + shapeScore y + roundScore r) 0 pairs
+        Right results -> foldl (\s r -> s + score (backfill r)) 0 results
+
+backfill :: (PSR, Result) -> (PSR, PSR)
+backfill (Paper, Draw) = (Paper, Paper)
+backfill (Paper, Win) = (Paper, Scissors)
+backfill (Paper, Lose) = (Paper, Rock)
+backfill (Rock, Draw) = (Rock, Rock)
+backfill (Rock, Win) = (Rock, Paper)
+backfill (Rock, Lose) = (Rock, Scissors)
+backfill (Scissors, Draw) = (Scissors, Scissors)
+backfill (Scissors, Win) = (Scissors, Rock)
+backfill (Scissors, Lose) = (Scissors, Paper)
+
+score :: (PSR, PSR) -> Int
+score r@(x, y)= shapeScore y + roundScore r
 
 type Parser a = Parsec a ()
 
@@ -44,6 +58,7 @@ roundScore (Scissors, Paper) = 0
 roundScore (Scissors, Rock) = 6
 
 data PSR = Paper | Scissors | Rock
+data Result = Win | Lose | Draw
 
 pPsr :: Parser String PSR
 pPsr = choice [
@@ -51,6 +66,8 @@ pPsr = choice [
     pure Scissors <$> oneOf "CZ",
     pure Rock <$> oneOf "AX"
     ]
+
+pResult = choice $ (\(c, r) -> pure r <$> char c) <$> [('X', Lose), ('Y', Draw), ('Z', Win)]
 
 pPsrPair :: Parser String (PSR, PSR)
 pPsrPair = do
@@ -61,3 +78,13 @@ pPsrPair = do
 
 pPsrs :: Parser String [(PSR, PSR)]
 pPsrs = many $ pPsrPair <* optional endOfLine
+
+pResults :: Parser String [(PSR, Result)]
+pResults = many $ pPsrResult <* optional endOfLine
+
+pPsrResult :: Parser String (PSR, Result)
+pPsrResult = do
+    psr <- pPsr
+    _ <- space
+    result <- pResult
+    return (psr, result)
