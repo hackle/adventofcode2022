@@ -1,6 +1,6 @@
 module Main where
 
-import AdventOfCode.Day2
+import AdventOfCode.Day3
 import System.Environment
 import System.IO
 
@@ -12,5 +12,6 @@ main = do
     fileName:_ -> do
       handle <- openFile fileName ReadMode
       contents <- hGetContents handle
-      putStrLn $ show $ psr contents
+      putStrLn $ show $ rucksack contents
+      -- putStrLn $ show $ psr contents
       -- putStrLn $ show $ maxCalorie contents
