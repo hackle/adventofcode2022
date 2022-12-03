@@ -21,8 +21,7 @@ toPriority c = ord c - baseA where
             else ord 'A' - 27
 
 findBadge :: [String] -> Char
-findBadge (xs:ys:rest) = head $ L.foldl findDups (findDups xs ys) rest
-findBadge _ = error "Not enough sacks"
+findBadge = head . L.foldl1 findDups
 
 findDupInSack :: String -> Char
 findDupInSack str = head $ findDups firstHalf secondHalf where
