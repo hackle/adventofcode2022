@@ -8,9 +8,9 @@ rucksack :: String -> Int
 rucksack raw = round2 $ lines raw
 
 round2 sacks = sum $ (toPriority . findBadge) <$> sackGroups where
-    sackGroups = L.unfoldr (tryTake 3) sacks
-    tryTake n (x:y:z:rest) = Just (x:y:z:[], rest)
-    tryTake _ _ = Nothing
+    sackGroups = L.unfoldr (tryTake3) sacks
+    tryTake3 (x:y:z:rest) = Just (x:y:z:[], rest)
+    tryTake3 _ = Nothing
 
 round1 sacks = sum $ (toPriority . findDupInSack) <$> sacks
 
