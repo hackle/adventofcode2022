@@ -7,7 +7,7 @@ psr :: String -> Int
 psr raw = 
     case parse pResults "" raw of
         Left e -> error $ show e
-        Right results -> foldl (\s r -> s + score (backfill r)) 0 results
+        Right results -> sum $ score . backfill <$> results
 
 backfill :: (PSR, Result) -> (PSR, PSR)
 backfill (Paper, Draw) = (Paper, Paper)

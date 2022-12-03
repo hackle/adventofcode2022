@@ -7,7 +7,7 @@ import Data.Function ((&))
 
 -- day 1
 maxCalorie :: String -> Int
-maxCalorie raw = sortBy descending sums & take 3 & foldl1 (+) where
+maxCalorie raw = sortBy descending sums & take 3 & sum where
     sums = deers (lines raw) []
     descending x y = compare y x
     deers rest aggr = case rest of
