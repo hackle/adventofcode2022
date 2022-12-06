@@ -1,6 +1,6 @@
 module Main where
 
-import AdventOfCode.Day4
+import AdventOfCode.Day5
 import System.Environment
 import System.IO
 
@@ -11,9 +11,9 @@ main = do
     [] -> putStrLn "First argument should be filename to input"
     fileName:_ -> do
       contents <- readFile fileName
-      case campCleanup contents of
-        Left err -> putStrLn err
-        Right res -> putStrLn $ show res
+      putStrLn $ supplyStacks contents
+        -- Left err -> putStrLn err
+        -- Right res -> putStrLn $ show res
       -- putStrLn $ show $ rucksack contents
       -- putStrLn $ show $ psr contents
       -- putStrLn $ show $ maxCalorie contents
