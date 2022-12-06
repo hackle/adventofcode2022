@@ -1,6 +1,7 @@
 module AdventOfCode.Day6 where
 
-import Data.List
+import qualified Data.Vector as V
+import qualified Data.List as L
 
 -- 
 -- ghci> startOfPacket "bvwbjplbgvbhsrlpgdmjqwftvncz"
@@ -12,13 +13,9 @@ import Data.List
 -- ghci> startOfPacket "zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw"
 -- Just 11
 startOfPacket :: String -> Maybe Int
-startOfPacket xs = go rest mLen taken
+startOfPacket xs = (+ 14) . fst <$> V.find isPacket indexedSubs
     where
-        (taken, rest) = splitAt mLen xs
         mLen = 14
-        go :: [Char] -> Int -> [Char] -> Maybe Int
-        go [] _ _ = Nothing
-        go rest@(a:as) pos taken@(b:c:bs) = 
-            if length (nub taken) == mLen 
-                then Just pos
-                else go as (pos + 1) (bs++[a])
+        vs = V.fromList xs
+        indexedSubs = fmap (\(idx, a) -> (idx, V.slice idx mLen vs)) (V.indexed vs)
+        isPacket (idx, v) = (L.length $ L.nub $ V.toList v) == mLen
