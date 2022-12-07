@@ -10,25 +10,30 @@ totalSize :: String -> String
 totalSize raw = 
     case runParser run ([], M.empty) "" raw of
         Left err -> show err
-        Right files -> 
-            let summed = fmap sumL files 
-                startsWithKey k = M.filterWithKey (\k1 _ -> k `L.isPrefixOf` k1)
-                aggr = M.mapWithKey (\k v -> M.foldl (+) 0 $ startsWithKey k summed) summed
-                free = 70000000 - aggr M.! "/"
-                required = 30000000 - free
-                toDelete = L.find (>= required) $ L.sort $ L.map snd $ M.toList aggr
-                under = M.filter (<= 100000) aggr
-            in show $ (sumM under, free, required, toDelete)
-    where
-        sumL = sum . fmap snd 
+        Right files -> show $ aggregate 70000000 30000000 100000 files
+
+aggregate tot mn mx files = (sumM $ under mx, free, required, toDelete)
+    where 
+        summed = fmap sumFileSize files 
+        aggr = M.mapWithKey (\k v -> sumM $ searchByKey k summed) summed
+        free = tot - aggr M.! "/"  -- from the root dir
+        required = mn - free
+        toDelete = 
+            snd <$> M.toList aggr & 
+            L.sort & 
+            L.find (>= required) 
+        under mx = M.filter (<= mx) aggr
+        sumFileSize = sum . fmap snd 
+        searchByKey k = M.filterWithKey (\k1 _ -> k `L.isPrefixOf` k1)
         sumM = M.foldl (+) 0
     
 
 type Name = String
 type Path = Name
 type Size = Int
+type File = (Name, Size)
+type Files = M.Map Path [File]
 
-type Files = M.Map Path [(Path, Size)]
 type AppState = ([Path], Files)
 
 type Parser = Parsec String AppState
@@ -69,16 +74,22 @@ dir = do
     name <- many1 alphaNum
     return (name, 0)
 
+segsToPath :: [Path] -> String
+segsToPath ps = L.intercalate "/" $ reverse ps
+
+mkPath path fname = path ++ "/" ++ fname ++ "/"
+
+updateFiles :: [Path] -> [File] -> Files -> Files
+updateFiles segs fd files = M.insert path withFullPath files where
+    path = segsToPath segs
+    withFullPath = fmap (\(f,s) -> (mkPath path f, s)) fd
+
 ls :: Parser ()
 ls = do
     string "ls" <* endOfLine
     fd <- many $ (file <|> dir) <* (optional endOfLine)
     (segs, files) <- getState
-    let path = L.intercalate "/" $ reverse segs
-        makePath p = path ++ p ++ "/"
-        fullPath = fmap (\(f,s) -> (makePath f, s)) fd
-        files' = M.insert path fullPath files
-    putState (segs, files')
+    putState (segs, updateFiles segs fd files)
 
 command :: Parser ()
 command = do
