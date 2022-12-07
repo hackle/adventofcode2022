@@ -14,15 +14,15 @@ totalSize raw =
 
 aggregate tot mn mx files = (sumM $ under mx, free, required, toDelete)
     where 
-        summed = fmap sumFileSize files 
-        aggr = M.mapWithKey (\k v -> sumM $ searchByKey k summed) summed
-        free = tot - aggr M.! "/"  -- from the root dir
+        summedByPath = fmap sumFileSize files 
+        aggrByPath = M.mapWithKey (\k v -> sumM $ searchByKey k summedByPath) summedByPath
+        free = tot - aggrByPath M.! "/"  -- from the root dir, partial
         required = mn - free
         toDelete = 
-            snd <$> M.toList aggr & 
+            snd <$> M.toList aggrByPath & 
             L.sort & 
             L.find (>= required) 
-        under mx = M.filter (<= mx) aggr
+        under mx = M.filter (<= mx) aggrByPath
         sumFileSize = sum . fmap snd 
         searchByKey k = M.filterWithKey (\k1 _ -> k `L.isPrefixOf` k1)
         sumM = M.foldl (+) 0
