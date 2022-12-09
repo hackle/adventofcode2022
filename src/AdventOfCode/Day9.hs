@@ -56,11 +56,11 @@ chain os = do
     histo <- get
     let ((h:ts):_) = histo
         h1 = move h os 
-    final <- foldM followPrev [h1] ts
+        final = foldl followPrev [h1] ts
     modify $ (reverse final : ) -- head at the back, need reversing
         
-followPrev :: [Coord] -> Coord -> State AppState [Coord]
-followPrev prev@(h:_) cur = pure $ follow h cur : prev
+followPrev :: [Coord] -> Coord -> [Coord]
+followPrev prev@(h:_) cur = follow h cur : prev
 
 runCommands :: Int -> [String] -> Int
 runCommands n commands = length $ nub tailFootprint
