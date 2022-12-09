@@ -22,12 +22,16 @@ directional mx r c =
         (tops, downs) = V.splitAt (r - 1) (M.getCol c mx)
     in V.fromList [V.reverse lefts, V.drop 1 rights, V.reverse tops, V.drop 1 downs]
 
+takeWhileInclusive :: (a -> Bool) -> V.Vector a -> V.Vector a
+takeWhileInclusive pred vs = 
+    let (v1, v2) = V.span pred vs 
+    in mappend v1 (V.take 1 v2)
+
 scoreAt :: M.Matrix Int -> (Int, Int) -> Int -> Int
 scoreAt mx coords@(r, c) height = 
     let directed = directional mx r c
-        isInView (aggr, goOn) v = if goOn then (aggr + 1, v < height) else (aggr, False)
-        inView = fst . V.foldl isInView (0, True) <$> directed
-    in  V.foldl (*) 1 inView
+        inViews = V.length . takeWhileInclusive (< height) <$> directed
+    in  V.foldl (*) 1 inViews
 
 toVisible :: M.Matrix Int -> M.Matrix Bool
 toVisible tree = M.mapPos (\coords v -> isVisible v coords tree) tree
