@@ -1,8 +1,6 @@
 module AdventOfCode.Day9 where
 
 import qualified Data.Map as M
-import Control.Monad.Trans.State.Lazy
-import Control.Monad
 import Data.List (nub, reverse, last)
 -- import Debug.Trace (trace)
 
@@ -44,20 +42,18 @@ stepOffset = M.fromList [
 
 type AppState = [[Coord]]
 
-runOneCommand :: [Char] -> State AppState ()
-runOneCommand (d:' ':n) = do
+runOneCommand :: AppState -> [Char] -> AppState
+runOneCommand histo (d:' ':n) =
     let tot = read n ::Int
         os = stepOffset M.! d
-    replicateM_ tot (chain os)
-    return ()
+    in iterate (chain os) histo !! tot
 
-chain :: Coord -> State AppState ()
-chain os = do
-    histo <- get
+chain :: Coord -> AppState -> AppState
+chain os histo =
     let ((h:ts):_) = histo
         h1 = move h os 
         final = foldl followPrev [h1] ts
-    modify $ (reverse final : ) -- head at the back, need reversing
+    in reverse final : histo -- head at the back, need reversing
         
 followPrev :: [Coord] -> Coord -> [Coord]
 followPrev prev@(h:_) cur = follow h cur : prev
@@ -65,7 +61,7 @@ followPrev prev@(h:_) cur = follow h cur : prev
 runCommands :: Int -> [String] -> Int
 runCommands n commands = length $ nub tailFootprint
     where
-        (_, footprint) = runState (mapM_ runOneCommand commands) [take n $ repeat (0, 0)]
+        footprint = foldl runOneCommand [take n $ repeat (0, 0)] commands
         tailFootprint = last <$> footprint
 
 moveForDiff1 d = moves M.! d
