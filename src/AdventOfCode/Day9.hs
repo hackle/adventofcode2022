@@ -60,9 +60,7 @@ chain os = do
     modify $ (reverse final : ) -- head at the back, need reversing
         
 followPrev :: [Coord] -> Coord -> State AppState [Coord]
-followPrev prev@(h:_) cur = do
-    let t = follow h cur 
-    pure $ t:prev
+followPrev prev@(h:_) cur = pure $ follow h cur : prev
 
 runCommands :: Int -> [String] -> Int
 runCommands n commands = length $ nub tailFootprint
