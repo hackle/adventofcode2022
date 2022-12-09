@@ -32,6 +32,7 @@ library
         AdventOfCode.Day6
         AdventOfCode.Day7
         AdventOfCode.Day8
+        AdventOfCode.Day9
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -46,7 +47,8 @@ library
         ilist,
         vector,
         comonad,
-        matrix
+        matrix,
+        transformers
     hs-source-dirs:   src
     default-language: Haskell2010
 
