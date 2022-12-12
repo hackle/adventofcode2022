@@ -34,6 +34,7 @@ library
         AdventOfCode.Day8
         AdventOfCode.Day9
         AdventOfCode.Day10
+        AdventOfCode.Day11
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -53,7 +54,7 @@ library
     hs-source-dirs:   src
     default-language: Haskell2010
 
-executable adventofcode
+executable adventofcodeapp
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.

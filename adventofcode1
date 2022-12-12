@@ -1,0 +1,83 @@
+	Mon Dec 12 11:02 2022 Time and Allocation Profiling Report  (Final)
+
+	   adventofcode +RTS -p -RTS input/day11test.txt
+
+	total time  =       19.20 secs   (19198 ticks @ 1000 us, 1 processor)
+	total alloc = 27,280,948,776 bytes  (excludes profiling overheads)
+
+COST CENTRE MODULE             SRC                                         %time %alloc
+
+mkOperation AdventOfCode.Day11 src/AdventOfCode/Day11.hs:(105,1)-(106,65)   89.2  100.0
+pTarget     AdventOfCode.Day11 src/AdventOfCode/Day11.hs:(118,1)-(124,60)   10.7    0.0
+
+
+                                                                                                                                        individual      inherited
+COST CENTRE                 MODULE                            SRC                                                    no.     entries  %time %alloc   %time %alloc
+
+MAIN                        MAIN                              <built-in>                                             209           0    0.0    0.0   100.0  100.0
+ CAF                        Main                              <entire-module>                                        417           0    0.0    0.0     0.0    0.0
+  main                      Main                              app/Main.hs:(8,1)-(14,32)                              418           1    0.0    0.0     0.0    0.0
+ CAF                        AdventOfCode.Day11                <entire-module>                                        416           0    0.0    0.0     0.0    0.0
+  pItems                    AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(91,1)-(96,36)               427           1    0.0    0.0     0.0    0.0
+  pMonkey                   AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(127,1)-(132,48)             423           1    0.0    0.0     0.0    0.0
+  pMonkeyNum                AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(83,1)-(88,24)               425           1    0.0    0.0     0.0    0.0
+  pMonkeys                  AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(135,1)-(139,33)             421           1    0.0    0.0     0.0    0.0
+  pOperand                  AdventOfCode.Day11                src/AdventOfCode/Day11.hs:102:1-39                     431           1    0.0    0.0     0.0    0.0
+  pOperation                AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(109,1)-(115,39)             429           1    0.0    0.0     0.0    0.0
+  pOperator                 AdventOfCode.Day11                src/AdventOfCode/Day11.hs:99:1-65                      433           1    0.0    0.0     0.0    0.0
+  pTarget                   AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(118,1)-(124,60)             435           1    0.0    0.0     0.0    0.0
+  mkOperation               AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(105,1)-(106,65)             460           0    0.0    0.0     0.0    0.0
+  runOneMonkey              AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(44,1)-(48,35)               466           0    0.0    0.0     0.0    0.0
+   marray#                  Data.Primitive.Array              Data/Primitive/Array.hs:112:5-11                       471           1    0.0    0.0     0.0    0.0
+   sChunks                  Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:130:30-36     469           1    0.0    0.0     0.0    0.0
+   sSize                    Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:132:30-34     468           1    0.0    0.0     0.0    0.0
+   unId                     Data.Vector.Fusion.Util           src/Data/Vector/Fusion/Util.hs:25:21-24                470           1    0.0    0.0     0.0    0.0
+   upperBound               Data.Vector.Fusion.Bundle.Size    src/Data/Vector/Fusion/Bundle/Size.hs:(129,1)-(131,30) 467           1    0.0    0.0     0.0    0.0
+ CAF                        GHC.Conc.Signal                   <entire-module>                                        318           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.Encoding                   <entire-module>                                        299           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.Encoding.Iconv             <entire-module>                                        297           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.Exception                  <entire-module>                                        291           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.FD                         <entire-module>                                        290           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.Handle.FD                  <entire-module>                                        288           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.Handle.Internals           <entire-module>                                        287           0    0.0    0.0     0.0    0.0
+ CAF                        GHC.IO.Handle.Text                <entire-module>                                        286           0    0.0    0.0     0.0    0.0
+ main                       Main                              app/Main.hs:(8,1)-(14,32)                              419           0    0.0    0.0   100.0  100.0
+  runApp                    AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(73,1)-(77,112)              420           1    0.0    0.0   100.0  100.0
+   monkeyBusiness           AdventOfCode.Day11                src/AdventOfCode/Day11.hs:70:1-138                     437           2    0.0    0.0   100.0  100.0
+    ranked                  AdventOfCode.Day11                src/AdventOfCode/Day11.hs:67:1-47                      472           2    0.0    0.0     0.0    0.0
+    states                  AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(64,1)-(65,77)               438           2    0.0    0.0   100.0  100.0
+     runN                   AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(60,1)-(61,34)               439        1022    0.0    0.0   100.0  100.0
+      runRound              AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(53,1)-(57,62)               440        1020    0.0    0.0   100.0  100.0
+       unId                 Data.Vector.Fusion.Util           src/Data/Vector/Fusion/Util.hs:25:21-24                473        4080    0.0    0.0     0.0    0.0
+       runOneMonkey         AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(44,1)-(48,35)               441        4078    0.0    0.0   100.0  100.0
+        array#              Data.Primitive.Array              Data/Primitive/Array.hs:69:5-10                        449       15685    0.0    0.0     0.0    0.0
+        runOneItem          AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(38,1)-(41,37)               450       15685    0.0    0.0   100.0  100.0
+         unId               Data.Vector.Fusion.Util           src/Data/Vector/Fusion/Util.hs:25:21-24                464       62700    0.0    0.0     0.0    0.0
+         marray#            Data.Primitive.Array              Data/Primitive/Array.hs:112:5-11                       465       31350    0.0    0.0     0.0    0.0
+         sChunks            Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:130:30-36     463       15675    0.0    0.0     0.0    0.0
+         sSize              Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:132:30-34     462       15675    0.0    0.0     0.0    0.0
+         upperBound         Data.Vector.Fusion.Bundle.Size    src/Data/Vector/Fusion/Bundle/Size.hs:(129,1)-(131,30) 461       15675    0.0    0.0     0.0    0.0
+         pMonkeys           AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(135,1)-(139,33)             451           0    0.0    0.0    99.9  100.0
+          pMonkey           AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(127,1)-(132,48)             452           0    0.0    0.0    99.9  100.0
+           pMonkeyNum       AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(83,1)-(88,24)               453           0    0.0    0.0    99.9  100.0
+            pItems          AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(91,1)-(96,36)               454           0    0.0    0.0    99.9  100.0
+             pOperation     AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(109,1)-(115,39)             455           0    0.0    0.0    99.9  100.0
+              pOperand      AdventOfCode.Day11                src/AdventOfCode/Day11.hs:102:1-39                     456           0    0.0    0.0    99.9  100.0
+               pOperator    AdventOfCode.Day11                src/AdventOfCode/Day11.hs:99:1-65                      457           0    0.0    0.0    99.9  100.0
+                mkOperation AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(105,1)-(106,65)             459       15685   89.2  100.0    89.2  100.0
+                pTarget     AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(118,1)-(124,60)             458           0   10.7    0.0    10.7    0.0
+        sElems              Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:129:30-35     448        4078    0.0    0.0     0.0    0.0
+        unId                Data.Vector.Fusion.Util           src/Data/Vector/Fusion/Util.hs:25:21-24                447        4078    0.0    0.0     0.0    0.0
+   pMonkeys                 AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(135,1)-(139,33)             422           0    0.0    0.0     0.0    0.0
+    pMonkey                 AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(127,1)-(132,48)             424           0    0.0    0.0     0.0    0.0
+     pMonkeyNum             AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(83,1)-(88,24)               426           0    0.0    0.0     0.0    0.0
+      pItems                AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(91,1)-(96,36)               428           0    0.0    0.0     0.0    0.0
+       pOperation           AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(109,1)-(115,39)             430           0    0.0    0.0     0.0    0.0
+        pOperand            AdventOfCode.Day11                src/AdventOfCode/Day11.hs:102:1-39                     432           0    0.0    0.0     0.0    0.0
+         pOperator          AdventOfCode.Day11                src/AdventOfCode/Day11.hs:99:1-65                      434           0    0.0    0.0     0.0    0.0
+          pTarget           AdventOfCode.Day11                src/AdventOfCode/Day11.hs:(118,1)-(124,60)             436           0    0.0    0.0     0.0    0.0
+           marray#          Data.Primitive.Array              Data/Primitive/Array.hs:112:5-11                       446          14    0.0    0.0     0.0    0.0
+           unId             Data.Vector.Fusion.Util           src/Data/Vector/Fusion/Util.hs:25:21-24                445          14    0.0    0.0     0.0    0.0
+           sChunks          Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:130:30-36     444           4    0.0    0.0     0.0    0.0
+           sSize            Data.Vector.Fusion.Bundle.Monadic src/Data/Vector/Fusion/Bundle/Monadic.hs:132:30-34     443           4    0.0    0.0     0.0    0.0
+           upperBound       Data.Vector.Fusion.Bundle.Size    src/Data/Vector/Fusion/Bundle/Size.hs:(129,1)-(131,30) 442           4    0.0    0.0     0.0    0.0
