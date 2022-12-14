@@ -1,8 +1,8 @@
-JOB "adventofcodeapp input/day11.txt +RTS -N -p -s -hT"
-DATE "Wed Dec 14 07:26 2022"
+JOB "adventofcodeapp input/day13test.txt +RTS -N -p -s -hT"
+DATE "Wed Dec 14 20:07 2022"
 SAMPLE_UNIT "seconds"
 VALUE_UNIT "bytes"
 BEGIN_SAMPLE 0.000000
 END_SAMPLE 0.000000
-BEGIN_SAMPLE 0.045936
-END_SAMPLE 0.045936
+BEGIN_SAMPLE 0.000459
+END_SAMPLE 0.000459

@@ -1,6 +1,6 @@
 module Main where
 
-import AdventOfCode.Day12
+import AdventOfCode.Day13
 import System.Environment
 import System.IO
 
@@ -11,7 +11,7 @@ main = do
     [] -> putStrLn "First argument should be filename to input"
     fileName:_ -> do
       contents <- readFile fileName
-      putStrLn $ show $ runApp trueInput
+      putStrLn $ show $ runApp contents
       -- putStrLn $ show $ bridgeCross 10 contents
       -- putStrLn $ show $ treeHouse contents
         -- Left err -> putStrLn err
