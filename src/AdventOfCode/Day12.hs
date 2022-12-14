@@ -7,12 +7,10 @@ import Data.List.Ordered (insertBagBy)
 import Data.Bifunctor (second)
 import qualified Data.Map as Mp
 
-hill :: String -> M.Matrix Int
-hill raw = ord <$> (M.fromLists $ lines raw)
-
 type Coord = (Int, Int)
 
-climbable fromN toN = toN - fromN `elem` [1,0,-1,-2]
+upByMax1 fromN toN = toN - fromN <= 1
+downByMax1 = flip upByMax1 --fromN toN = fromN - toN <= 1
 
 neighbourCoords = [
             (-1, 0),
@@ -33,58 +31,56 @@ updateBeenTo coords beenTo = foldl (\bt c -> M.setElem True c bt) beenTo coords
 
 pickOne :: M.Matrix Int -- hill
         -> BeenTo  -- all been to
+        -> (Coord -> Bool)
         -> [Coord]   
         -> (BeenTo, [[Coord]]) -- possibility of next steps
-pickOne hill beenTo existing@(lastStep:_) = 
+pickOne hill beenTo canGo existing@(lastStep:_) = 
     let nexts = filter canGo neighbours 
     in (updateBeenTo nexts beenTo, (: existing) <$> nexts)
     where
-        canGo x = climbable (hill M.! lastStep) (hill M.! x) && not (beenTo M.! x)
         neighbours = findNeighbours lastStep hill
-
-insertOrdered :: Coord -> M.Matrix Int -> [[Coord]] -> [Coord] -> [[Coord]]
-insertOrdered hill stop st cur = insertBagBy (ordering stop hill) cur st
-
-ordering hill stop (x:xs) (y:ys) = 
-    let lenComp = (length xs) `compare` (length ys)
-        heightComp = (hill M.! y) `compare` (hill M.! x)    -- reversed, higher than than lower
-        distComp = dist x stop `compare` dist y stop
-    in case (heightComp, lenComp, distComp) of
-        (EQ, EQ, _) -> distComp
-        (EQ, _, _) -> lenComp
-        _ -> heightComp
-
-distTo :: Coord -> Coord -> Coord -> Ordering
-distTo stop c1 c2 = compare (dist c1 stop) (dist c2 stop)
 
 dist (r1, c1) (r2, c2) = (abs $ r2 - r1) + (abs $ c2 - c1)
 
-progress :: M.Matrix Int -> Coord -> Coord -> (BeenTo, [Coord])
-progress hill start stop = 
-    let beenTo = M.setElem True start $ const False <$> hill 
+progress :: M.Matrix Int -> Coord -> ([Coord] -> Bool) 
+            -> ([Coord] -> [Coord] -> Ordering) 
+            -> (Int -> Int -> Bool) -> (BeenTo, [Coord])
+progress hill start toStop ordering pace = 
+    let beenTo = M.setElem True start $ const False <$> hill
     in go beenTo [[start]]
     where 
         go :: BeenTo -> [[Coord]] -> (BeenTo, [Coord])
         go beenTo [] = (beenTo, [])
         go beenTo (shortest:possibles) = 
-            let step@(beenTo1, news) = pickOne hill beenTo shortest
-                (successful, unsuccessful) = partition (\(h:_) -> dist h stop == 0) news
-                newPossibles = foldl (insertOrdered stop hill) possibles unsuccessful
+            let canGo x = pace (hill M.! (head shortest)) (hill M.! x) && not (beenTo M.! x)
+                step@(beenTo1, news) = pickOne hill beenTo canGo shortest
+                (successful, unsuccessful) = partition toStop news
+                newPossibles = foldl (insertOrdered ordering) possibles unsuccessful
             in if null successful
                 then go beenTo1 newPossibles
                 else (beenTo1, head successful)
 
+insertOrdered :: ([Coord] -> [Coord] -> Ordering) -> [[Coord]] -> [Coord] -> [[Coord]]
+insertOrdered ordering st cur = insertBagBy ordering cur st
 
-runApp :: (Coord, Coord, String) -> (M.Matrix String, Int)
+orderByLength hill (x:xs) (y:ys) = (length xs) `compare` (length ys)
+
+orderByHeight hill (x:xs) (y:ys) = (hill M.! y) `compare` (hill M.! x)    -- lower first
+
+orderThen :: (a -> a -> Ordering) -> (a -> a -> Ordering) -> (a -> a -> Ordering)
+orderThen f g x y = f x y <> g x y
+
+visualised :: M.Matrix Int -> [Coord] -> M.Matrix String
+visualised hill shortest = 
+    let numberedPath = Mp.fromList $ zipWith (,) shortest [0..]
+    in M.mapPos (\pos c -> maybe [' ', chr c, ' '] (const $ "[" ++ [chr c] ++ "]") $ Mp.lookup pos numberedPath) hill
+
+runApp :: (Coord, Coord, String) -> [(M.Matrix String, Int)]
 runApp (start, end, raw) = 
-    let h = hill raw 
-        (beenTo, shortest) = progress h start end
-        numbered = Mp.fromList $ zipWith (,) shortest [0..]
-    in (M.mapPos (\pos c -> maybe [' ', chr c, ' '] (const $ "[" ++ [chr c] ++ "]") $ Mp.lookup pos numbered) h, length shortest - 1)
-
--- parseInput :: String -> (Coord, Coord, M.Matrix Int)
--- parseInput raw = 
---     let m = M.fromLists $ lines raw
+    let hill = ord <$> (M.fromLists $ lines raw)
+        (_, shortest1) = progress hill start (\(h:_) -> h == end) (orderByLength hill) upByMax1
+        (_, shortest2) = progress hill end (\(h:_) -> hill M.! h == ord 'a') (orderThen (orderByHeight hill) (orderByLength hill)) downByMax1
+    in (\p -> (visualised hill p, length p - 1)) <$> [shortest1, shortest2]
 
 testInput :: ((Int, Int), (Int, Int), String)
 testInput = ((1, 1), (3, 6),
