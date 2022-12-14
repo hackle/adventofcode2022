@@ -1,7 +1,7 @@
 module AdventOfCode.Day13 where
 
 import Text.Parsec
-import Data.List (sum)
+import Data.List (sum, sort)
 
 data Tree a = Leaf a | Node [Tree a] deriving (Eq, Show)
 
@@ -31,14 +31,29 @@ pPairs = do
     tree2 <- pNode <* optional endOfLine
     pure (tree1, tree2)
 
+withIndex = zip [1..]
+
+round1 :: [(Tree Int, Tree Int)] -> ([(Int, Ordering)], Int)
+round1 pairs = (wIdx, sumInOrder)
+    where 
+        ordered = (uncurry compare) <$> pairs
+        wIdx = withIndex ordered
+        sumInOrder = sum $ (\(idx, o) -> if o /= GT then idx else 0) <$> wIdx
+
+
+dividers = [Node [Node [Leaf 2]], Node [Node [Leaf 6]]]
+
+round2 :: [(Tree Int, Tree Int)] -> ([Tree Int], Int)
+round2 pairs = (sorted, product dividerIndice)
+    where 
+        withDividers = dividers ++ (concat $ (\(a, b) -> [a, b]) <$> pairs)
+        sorted = sort withDividers
+        dividerIndice = (\(idx, tr) -> if tr `elem` dividers then idx else 1) <$> withIndex sorted
+
 runApp raw = 
     case parse (pPairs `sepBy1` endOfLine) ":)" raw of
         Left err -> show err
-        Right pairs -> 
-            let ordered = (uncurry compare) <$> pairs
-                withIndex = zip [1..] ordered
-                sumInOrder = sum $ (\(idx, o) -> if o /= GT then idx else 0) <$> withIndex
-            in show $ (withIndex, sumInOrder)
+        Right pairs -> show (round1 pairs, round2 pairs)
 
 testInput =
     "[1,1,3,1,1]\n\
