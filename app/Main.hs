@@ -1,6 +1,6 @@
 module Main where
 
-import AdventOfCode.Day13
+import AdventOfCode.Day14
 import System.Environment
 import System.IO
 

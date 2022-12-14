@@ -37,6 +37,7 @@ library
         AdventOfCode.Day11
         AdventOfCode.Day12
         AdventOfCode.Day13
+        AdventOfCode.Day14
 
     -- Modules included in this library but not exported.
     -- other-modules:
