@@ -3,6 +3,7 @@ module AdventOfCode.Day15 where
 import qualified Data.Set as S
 import qualified Data.List as L
 import Control.Monad
+import Control.Parallel(par, pseq)
 
 type Coord = (Int, Int)
 type Range = (Int, Int)
