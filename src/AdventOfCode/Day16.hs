@@ -25,8 +25,7 @@ data State =
         sLayout :: Layout, -- this gets updated when a valve is released
         sValve :: String, -- current valve
         sMinutes ::Int,     -- minutes left
-        sPath :: [String],
-        sRate :: Int
+        sPath :: [String]
     } deriving (Eq, Show)
 
 type Input = (String, Int, [String])
@@ -35,7 +34,7 @@ toValve :: Input -> Valve
 toValve (name, pressure, nexts) = Valve name pressure nexts
 
 initialState :: [Input] -> State
-initialState inp = State { sLayout=toLayout inp, sValve="AA", sPressure=0, sMinutes=30, sPath=[], sRate=0 }
+initialState inp = State { sLayout=toLayout inp, sValve="AA", sPressure=0, sMinutes=30, sPath=[] }
         
 toLayout :: [Input] -> Layout
 toLayout inp = M.fromList $ toKV <$> inp
@@ -128,28 +127,33 @@ findAcyclic from layout = go [from]
             in if null acyclic then [segs] else concat $ go <$> appended
 
 round1 :: State -> State
-round1 st = go st
-    where 
-        go st = if sMinutes st == 0 then st else go (step1 st)
+round1 st = L.maximumBy byPressure $ step1 st
+    where byPressure st1 st2 = sPressure st1 `compare` sPressure st2
 
-step1 :: State -> State
-step1 st@State{sValve,sLayout,sPath, sMinutes, sPressure} = 
-    let minutesLeft = sMinutes - length bestValve - 1   -- 1 minute to open valve
-    in if M.size withPressure == 0 then st{sMinutes=0} else -- no more to do, use up all minutes
-        st{
-            sValve = bestValve, 
-            sLayout = resetBestValve, 
-            sPath = sPath ++ bestPath ++ [(last bestPath)],
-            sMinutes = minutesLeft,
-            sPressure = sPressure + minutesLeft * bestFlowRate
-        }
+step1 :: State -> [State]
+step1 st@State{sValve, sLayout, sPath, sMinutes, sPressure} = 
+    -- let minutesLeft = sMinutes - length bestValve - 1   -- 1 minute to open valve
+    if M.size withPressure == 0 
+        then [st{sMinutes=0}] 
+        else concat $ step1 . tryOne <$> withPressure-- no more to do, use up all minutes
+        
     where 
         valve = sLayout M.! sValve
         resetBestValve = M.insert sValve (valve{vFlowRate=0}) sLayout 
         valvePaths = M.mapWithKey (\(_, to) xs -> (to, sLayout M.! to, xs)) (findPaths sValve sLayout)
         withPressure = M.filter (\(_, v, _) -> vFlowRate v > 0) valvePaths
-        (bestValve, Valve{vFlowRate=bestFlowRate}, bestPath) = L.maximumBy releaseRate $ snd <$> M.toList withPressure
-        releaseRate (_, v1, path1) (_, v2, path2) = flowRateScore v1 path1 `compare` flowRateScore v2 path2
+        tryOne (valveName, v@(Valve{vFlowRate}), path) = 
+            let minutesLeft = sMinutes - length path - 1
+            in st{
+                    sValve = valveName,
+                    sPath = sPath ++ path ++ [valveName],
+                    sPressure = sPressure + minutesLeft * vFlowRate,
+                    sMinutes = minutesLeft,
+                    sLayout = M.insert valveName (v{vFlowRate=0}) sLayout
+                }
+
+-- (bestValve, Valve{vFlowRate=bestFlowRate}, bestPath) = L.maximumBy releaseRate $ snd <$> M.toList withPressure
+-- releaseRate (_, v1, path1) (_, v2, path2) = flowRateScore v1 path1 `compare` flowRateScore v2 path2
 
 flowRateScore :: Valve -> [String] -> Int
 flowRateScore Valve{vFlowRate} path = vFlowRate `div` (length path + 1)  -- takes a minute to open valve
