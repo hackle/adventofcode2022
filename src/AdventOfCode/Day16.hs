@@ -146,20 +146,22 @@ findAcyclic from layout = go [from]
 
 
 round1 :: State -> State
-round1 st = go st []
+round1 st = go [] [st]
     where 
-        go best left =
+        go done []   = L.maximumBy byPressure done
+        go done left =
             -- if sMinutes state == 0 then state else
-                let (best1, left1) = L.partition (\s -> sMinutes s == 0) $ step1 (traceShow (sPressure best) best)
-                    (best2:left2) = L.foldl (\bag cur -> insertBagBy byPressure cur bag) left left1
-                in if null best1 then go best2 left2 else head best1
+                let (done1, left1) = L.partition (\s -> sMinutes s == 0) $ concat $ step1 <$> left
+                    done2 = done1 ++ done
+                    left2 = left1 ++ left -- L.foldl (\bag cur -> insertBagBy byPressure cur bag) left left1
+                in go done2 left2
         byPressure st1 st2 = (sPressure st2 ) `compare` (sPressure st1) -- <>  sMinutes st2 `compare` sMinutes st1 -- higher pressure the better
 
 step1 :: State -> [State]
 step1 st@State{sValve, sLayout, sPath, sMinutes, sPressure, sPaths} = 
     -- let minutesLeft = sMinutes - length bestValve - 1   -- 1 minute to open valve
     if M.null nextPaths
-        then [st{sMinutes=sMinutes - 1}] -- no more to do, use up all minutes
+        then [st{sMinutes=0}] -- no more to do, just use up a minute
         else snd <$> (M.toList $ tryOne <$> nextPaths)
         
     where 
