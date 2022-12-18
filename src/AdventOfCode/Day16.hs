@@ -45,70 +45,6 @@ toLayout inp = M.fromList $ toKV <$> inp
     where 
         toKV i@(n, _, _) = (n, toValve i)
 
--- step1 :: State -> [State]
--- step1 state@(State{sLayout,sValve,sPressure,sMinutes,sPath}) = 
---     if 0 == (M.size $ M.filter (\n -> vFlowRate n > 0) sLayout)
---         then [state{sMinutes=0}]
---         else concat $ go <$> vNexts
---     where 
---         (curVal@Valve{vNexts}) = sLayout M.! sValve
---         go next = 
---             let (nv@Valve{vFlowRate}) = sLayout M.! next
---                 toStay = state{
---                     sPath= (sMinutes - 1, "_", 0):(traceShow (L.length sPath) sPath),
---                     sValve = next,
---                     sMinutes = sMinutes - 1,
---                     sRate = sPressure `div` (L.length sPath + 1)
---                 }
---                 toOpen = toStay{
---                     sPath= (sMinutes - 2, next, vFlowRate):(sMinutes - 1, "_", 0):sPath, -- book keep for each minute
---                     sLayout = M.insert next (nv{vFlowRate=0}) sLayout,    --reset pressure as it's released
---                     sPressure = sPressure + (sMinutes - 2) * vFlowRate,
---                     sMinutes = sMinutes - 2,
---                     sRate = (sPressure + (sMinutes - 2) * vFlowRate) `div` (L.length sPath + 2)
---                     }
---             in if vFlowRate > 0 && sMinutes > 0 
---                 then [toStay, toOpen] 
---                 else [toStay]
-
--- orderByPressure :: State -> State -> Ordering
--- orderByPressure st1 st2 = (sPressure st2) `compare` (sPressure st1) -- the higher the rate the better
---     -- ((sPressure st2) `compare` (sPressure st1)) <> ((L.length $ sPath st1) `compare` (L.length $ sPath st2))-- (valvesLeft st1) `compare` (valvesLeft st2) -- <> (sMinutes st2) `compare` (sMinutes st1) -- (sPressure st2) `compare` (sPressure st1) -- <>
---      -- <> -- the higher the pressure, the more minutes left,  the better, so reversed
---     -- (sMinutes st2) `compare` (sMinutes st1)
---     where 
---         pressureByMinute (State{sPressure, sMinutes}) = sPressure `div` sMinutes
---         valvesLeft State{sLayout} = M.foldl (+) 0 $ fmap vFlowRate sLayout
-
--- insertOrdered :: [State] -> State -> [State]
--- insertOrdered aggr st = insertBagBy orderByPressure st aggr
-
--- round1 :: State -> [State]
--- round1 initial = go idx [] [initial]
-    -- where
-    --     go :: Int -> [State] -> [State] -> [State]
-    --     go n done [] = take 1 done
-    --     go n done (cur:left) = 
-    --         let nextStates = step1 cur
-    --             (done1, left1) = L.partition (\st -> sMinutes st <= 0) nextStates
-    --             done2 = foldl insertOrdered done1 done
-    --         in go (n - 1) (done2) $ foldl insertOrdered left1 left 
-        
-testInput :: [Input]
-testInput= 
-    [
-        ("AA", 0, [ "DD", "II", "BB" ]),
-        ("BB", 13, [ "CC", "AA" ]),
-        ("CC", 2, [ "DD", "BB" ]),
-        ("DD", 20, [ "CC", "AA", "EE" ]),
-        ("EE", 3, [ "FF", "DD" ]),
-        ("FF", 0, [ "EE", "GG" ]),
-        ("GG", 0, [ "FF", "HH" ]),
-        ("HH", 22, [ "GG" ]),
-        ("II", 0, [ "AA", "JJ" ]),
-        ("JJ", 21, [ "II" ])
-    ]
-
 type Paths = M.Map (String, String) [String]
 
 type Segs = [String]
@@ -144,30 +80,25 @@ findAcyclic from layout = go [from]
             in if null acyclic then [segs] else concat $ go <$> appended
 
 
-
 round1 :: State -> State
 round1 st = go [] [st]
     where 
-        go complete []  = traceShow (L.length complete) $ head complete
+        go complete []  = head complete
         go complete (best:left) =
             -- if sMinutes state == 0 then state else
-                let (complete1, left1) = L.partition (\s -> sMinutes s <= 0) $ step1 (debugState best)
+                let (complete1, left1) = L.partition (\s -> sMinutes s <= 0) $ step1 best
                     completes = L.foldl (\bag cur -> insertBagBy (flip byRate) cur bag) complete complete1 -- when complete, rank by pressure
                     lefts = L.foldl (\bag cur -> insertBagBy (flip byRate) cur bag) left left1  -- when searching, rank by release rate 
                 in 
-                    case (completes, (debugStates lefts)) of
+                    case (completes, lefts) of
                         ((bestComp:_), (bestLeft:_)) -> 
-                            if byRate (traceShow (sPressure bestComp) bestComp) bestLeft /= GT -- there are better ones in lefts, try them out
+                            if byRate bestComp bestLeft /= GT -- there are better ones in lefts, try them out
                                 then go completes lefts 
-                                else trace ("It's done here" ++ (show $ L.maximumBy byPressure lefts)) bestComp   -- nothing is better in rate or pressure
+                                else bestComp   -- nothing is better in rate or pressure
                         _ -> go completes lefts
 
 byRate st1 st2 = sRate st1 `compare` sRate st2 <> sPressure st1 `compare` sPressure st2 -- <>-- higher pressure the better
 byPressure st1 st2 = sPressure st1 `compare` sPressure st2 <> sRate st1 `compare` sRate st2 -- higher pressure the better
-
-debugState best = best -- trace ("best is " ++ show (sPressure best, sRate best, sPath best, sMinutes best)) best
-
-debugStates states = states -- trace ("Candidates are" ++ show ((\s -> (sPressure s, sRate s)) <$> states)) states
 
 step1 :: State -> [State]
 step1 st@State{sValve, sLayout, sPath, sMinutes, sPressure, sPaths} = 
@@ -202,24 +133,8 @@ step1 st@State{sValve, sLayout, sPath, sMinutes, sPressure, sPaths} =
                     sRate = rate
                     }
 
--- (bestValve, Valve{vFlowRate=bestFlowRate}, bestPath) = L.maximumBy releaseRate $ snd <$> M.toList withPressure
--- releaseRate (_, v1, path1) (_, v2, path2) = flowRateScore v1 path1 `compare` flowRateScore v2 path2
-
 flowRateScore :: Valve -> [String] -> Int
 flowRateScore Valve{vFlowRate} path = vFlowRate `div` (length path + 1)  -- takes a minute to open valve
-
-    -- where
-    --     go :: Paths -> Paths
-    --     go paths = 
-    --         let Valve{vNexts} = layout M.! from
-    --             updatedPaths = foldl (insert1 from segs) paths vNexts
-    --         in 
-    --             if updatedPaths == paths 
-    --                 then paths 
-    --                 else M.foldlWithKey _ paths paths
-    --     insert1 from segs paths to = 
-    --         let key = (from, to)
-    --         in maybe paths (\_ -> M.insert key (to:segs) paths) (paths M.!? key)
     
 trueInput :: [Input]
 trueInput =
@@ -276,56 +191,17 @@ trueInput =
         ("WE", 0, ["MC", "GI"])
     ]
 
-trueInput1 = 
+testInput :: [Input]
+testInput= 
     [
-        ("EV", 0, [ "WG", "IB" ]),
-        ("IB", 0, [ "EW", "EV" ]),
-        ("KL", 0, [ "JH", "OY" ]),
-        ("QJ", 0, [ "TX", "JH" ]),
-        ("OA", 12, [ "SB", "GI", "ED"]),
-        ("BQ", 0, [ "NK", "JJ" ]),
-        ("PZ", 0, [ "JH", "VA" ]),
-        ("QO", 8, [ "LN", "LU" , "CU", "SQ", "YZ" ]),
-        ("MP", 0, [ "LN", "GO" ]),
-        ("YZ", 0, [ "AA", "QO" ]),
-        ("CU", 0, [ "RY", "QO" ]),
-        ("UE", 16, [ "VP" ]),
-        ("HT", 0, [ "AA", "JE" ]),
-        ("EF", 0, [ "ES", "JE" ]),
-        ("JJ", 15, [ "BQ" ]),
-        ("JX", 0, [ "AA", "GO" ]),
-        ("AA", 0, [ "JX", "TX" , "HT", "YZ" ]),
-        ("MI", 21, [ "PQ", "QT" ]),
-        ("ES", 0, [ "EF", "NK" ]),
-        ("VC", 0, [ "MC", "IW" ]),
-        ("LN", 0, [ "MP", "QO" ]),
-        ("ED", 0, [ "OA", "RY" ]),
-        ("WG", 20, [ "EV", "OY", "KF" ]),
-        ("GI", 0, [ "WE", "OA" ]),
-        ("UK", 0, [ "TO", "JE" ]),
-        ("GY", 23, [ "EO", "QT" ]),
-        ("TX", 0, [ "AA", "QJ" ]),
-        ("OE", 0, [ "GO", "NK" ]),
-        ("OQ", 9, [ "VP", "SB" ]),
-        ("NK", 25, [ "OE", "ES", "BQ" ]),
-        ("LU", 0, [ "JH", "QO" ]),
-        ("RY", 18, [ "ED", "IW", "CU" ]),
-        ("KF", 0, [ "JE", "WG" ]),
-        ("IW", 0, [ "VC", "RY" ]),
-        ("SQ", 0, [ "MC", "QO" ]),
-        ("PQ", 0, [ "MC", "MI" ]),
-        ("TO", 0, [ "UK", "JH" ]),
-        ("OY", 0, [ "KL", "WG" ]),
-        ("JE", 10, [ "EF", "ND", "HT", "KF", "UK" ]),
-        ("JH", 3, [ "QJ", "KL", "PZ", "TO", "LU" ]),
-        ("VP", 0, [ "OQ", "UE" ]),
-        ("EW", 22, [ "IB" ]),
-        ("ND", 0, [ "JE", "GO" ]),
-        ("VA", 0, [ "GO", "PZ" ]),
-        ("QT", 0, [ "MI", "GY" ]),
-        ("EO", 0, [ "GY", "MC" ]),
-        ("MC", 11, [ "PQ", "SQ", "WE", "EO", "VC" ]),
-        ("GO", 4, [ "JX", "VA", "OE", "MP", "ND" ]),
-        ("SB", 0, [ "OQ", "OA" ]),
-        ("WE", 0, [ "MC", "GI" ])
+        ("AA", 0, [ "DD", "II", "BB" ]),
+        ("BB", 13, [ "CC", "AA" ]),
+        ("CC", 2, [ "DD", "BB" ]),
+        ("DD", 20, [ "CC", "AA", "EE" ]),
+        ("EE", 3, [ "FF", "DD" ]),
+        ("FF", 0, [ "EE", "GG" ]),
+        ("GG", 0, [ "FF", "HH" ]),
+        ("HH", 22, [ "GG" ]),
+        ("II", 0, [ "AA", "JJ" ]),
+        ("JJ", 21, [ "II" ])
     ]
