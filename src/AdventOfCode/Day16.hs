@@ -19,26 +19,45 @@ data Valve =
 
 type Layout = M.Map ValveName Valve
 
+data ActorState = 
+    ActorState { 
+        aValve :: String,
+        aPath :: [String], 
+        aMinutes :: Int 
+    } deriving (Eq, Show)
+
 data State = 
     State {
         sPressure :: Int,    -- total pressure released
-        sPath :: [String], -- current path
-        sMinutes ::Int,     -- minutes left
-        sValve :: String, -- current valve
+        -- sPath :: [String], -- current path
+        sMinutes ::Int,     -- minutes left, max of both actors
+        -- sValve :: String, -- current valve
         sLayout :: Layout, -- this gets updated when a valve is released
         sPaths :: M.Map String Paths, -- all possible paths
         sRate :: Float
     } deriving (Eq, Show)
+
+data TotalState =
+    TotalState { 
+        tState :: State, 
+        tActor1 :: ActorState, 
+        tActor2 :: ActorState 
+        } deriving (Eq, Show)
 
 type Input = (String, Int, [String])
 
 toValve :: Input -> Valve
 toValve (name, pressure, nexts) = Valve name pressure nexts
 
-initialState :: [Input] -> State
+totalMinutes :: Int
+totalMinutes = 26
+
+initialState :: [Input] -> TotalState
 initialState inp = 
     let layout = toLayout inp
-    in State { sLayout = layout, sValve="AA", sPressure=0, sMinutes=30, sPath=[], sPaths = findAllPaths layout, sRate = 0 }
+        state = State { sLayout = layout, sPressure=0, sPaths = findAllPaths layout, sRate = 0, sMinutes = totalMinutes * 2 }
+        actorState = ActorState { aValve = "AA", aMinutes = totalMinutes, aPath=[] }
+    in TotalState{ tState = state, tActor1 = actorState, tActor2 = actorState }
         
 toLayout :: [Input] -> Layout
 toLayout inp = M.fromList $ toKV <$> inp
@@ -80,55 +99,122 @@ findAcyclic from layout = go [from]
             in if null acyclic then [segs] else concat $ go <$> appended
 
 
-round1 :: State -> State
-round1 st = go [] [st]
+round1 :: TotalState -> TotalState
+round1 tot = go [] [tot]
     where 
         go complete []  = head complete
         go complete (best:left) =
-            let (complete1, left1) = L.partition (\s -> sMinutes s <= 0) $ step1 best
+            let newTots = step1 (sPressure $ tState best) best
+                (complete1, left1) = L.partition (\s -> sMinutes (tState s) <= 0) newTots
                 completes = L.foldl (\bag cur -> insertBagBy (flip byRate) cur bag) complete complete1 -- when complete, rank by pressure
                 lefts = L.foldl (\bag cur -> insertBagBy (flip byRate) cur bag) left left1  -- when searching, rank by release rate 
             in 
                 case (completes, lefts) of
                     ((bestComp:_), (bestLeft:_)) -> 
-                        if byRate bestComp bestLeft /= GT -- there are better ones in lefts, try them out
+                        if byRate 
+                            (traceTotalState "complete" bestComp)
+                            (traceTotalState "pending" bestLeft) /= GT -- there are better ones in lefts, try them out
                             then go completes lefts 
                             else bestComp   -- nothing is better in rate or pressure
                     _ -> go completes lefts
 
-byRate st1 st2 = sRate st1 `compare` sRate st2 <> sPressure st1 `compare` sPressure st2 -- <>-- higher pressure the better
+traceTotalState status tot@TotalState{tState} = trace ("best of " ++ status ++ " " ++ (show $ sPressure tState)) tot
 
-step1 :: State -> [State]
-step1 st@State{sValve, sLayout, sPath, sMinutes, sPressure, sPaths} = 
-    if M.null nextPaths || sMinutes <= 1    -- not enough time to do anything
-        then [idleState] -- no more to do, just use up a minute
-        else snd <$> (M.toList $ tryOne <$> nextPaths)
+byRate TotalState{tState=st1} TotalState{tState=st2} = 
+    sRate st1 `compare` sRate st2 <> 
+    sPressure st1 `compare` sPressure st2 -- <>-- higher pressure the better
+
+
+idleState st@State{sPressure} = 
+    st {
+        sRate=(fromIntegral sPressure) / (fromIntegral $ totalMinutes * 2),
+        sMinutes = 0
+    }
+
+idleActorState actorState@ActorState{aPath} = 
+    let updatedPath = aPath ++ (if null aPath then [] else [last aPath])
+    in actorState {
+        aMinutes=0,
+        aPath=updatedPath
+        }
+
+idleTotalState TotalState{tState, tActor1, tActor2} = 
+    TotalState{
+        tState = idleState tState,
+        tActor1 = idleActorState tActor1,
+        tActor2 = idleActorState tActor2
+    }
+
+selectActor actor1 actor2 = 
+    if aMinutes actor1 > aMinutes actor2    -- progress the actor that's falling behind (with more minutes left)
+        then traceW "actor1" (actor1, actor2, \tot val -> tot{tActor1=val}) -- value and setter
+        else traceW "actor2" (actor2, actor1, \tot val -> tot{tActor2=val})
+    where
+        traceW name v = v --trace ("Progressing " ++ name ++ ", actors" ++ show [actor1, actor2]) v
+
+estimate :: Int -> [Int] -> Int
+estimate minutesLeft rates = 
+    sum $ L.zipWith (\m fr -> m * fr) 
+            (L.reverse $ L.sort rates) 
+            (abs <$> [2 - minutesLeft, 4 - minutesLeft .. 0]) -- take a minute to get to the first valve then to release
+
+bigOnesTooLate minutesLeft paths = 
+    ((trace ("Time left " ++ show halfTimeGone) halfTimeGone) < 0.5 && valvesLeft >= 2) ||
+    ((trace ("Time left " ++ show halfTimeGone) halfTimeGone) < 0.3 && valvesLeft >= 1) 
+
+    where 
+        halfTimeGone = ((fromIntegral minutesLeft) / (fromIntegral $ totalMinutes * 2))
+        valvesLeft = M.size $ M.filter (\(_, Valve{vFlowRate}, _) -> vFlowRate >= 20) paths
+
+step1 :: Int -> TotalState -> [TotalState]
+step1 bestPressure tot@TotalState{tState, tActor1, tActor2} =
+    let minutesLeft = otherActorMinutes + aMinutes
+        flowRatesLeft = snd <$> (M.toList $ (\(_, Valve{vFlowRate}, _) -> vFlowRate) <$> nextPaths)
+        estimatedPressure = estimate minutesLeft flowRatesLeft 
+        skipForEstimate = sPressure + estimatedPressure < bestPressure
+    in 
+        if bigOnesTooLate minutesLeft nextPaths ||
+            (trace (if not skipForEstimate then "" else "Not enough pressure to win. Current " ++ show sPressure ++ " Estimated " ++ show estimatedPressure) skipForEstimate)
+         then []    -- no use trying
+            else if M.null nextPaths || 
+                        aMinutes < 2 ||  -- not enough time to do anything
+                        otherActorMinutes < 2
+                    then [idleTotalState tot] -- no more to do, just use up a minute
+                    else snd <$> (M.toList $ tryOne <$> nextPaths)
         
     where 
-        idleState = 
-            let updatedPath = sPath ++ [last sPath]
-            in st{
-                sMinutes=0,
-                sRate=(fromIntegral sPressure) / (fromIntegral 30),
-                sPath=updatedPath
-                }
-        currentValve = sLayout M.! sValve
-        nextPaths = M.filter (\(_, _, xs) -> L.length xs + 1 < sMinutes) $ M.mapWithKey (\(_, to) xs -> (to, sLayout M.! to, xs)) (sPaths M.! sValve)
+        (actor, ActorState{aValve=otherActorValve, aMinutes=otherActorMinutes}, setActor) = selectActor tActor1 tActor2
+        ActorState{ aPath, aMinutes, aValve } = actor
+        State{ sLayout, sPressure, sMinutes, sPaths} = tState
+        currentValve = sLayout M.! aValve
+        nextPaths = 
+            M.filter (\(_, _, xs) -> L.length xs + 1 < aMinutes) $ 
+            M.mapWithKey (\(_, to) xs -> (to, sLayout M.! to, xs)) (sPaths M.! aValve)
         tryOne (nextValve, v@(Valve{vFlowRate}), path) = 
-            let minutesLeft = sMinutes - length path - 1 -- an extra minute to open
-                resetPaths = resetValve sValve sPaths
+            let minutesLeft = aMinutes - length path - 1 -- an extra minute to open
+                commonMinutesLeft = otherActorMinutes + minutesLeft -- gotta be conservative or or the actors won't finish
+                resetPaths = 
+                    if otherActorValve == aValve 
+                        then sPaths -- the other actor still needs the paths
+                        else resetValve aValve sPaths
                 pressure = sPressure + minutesLeft * vFlowRate
-                pathUpdate = sPath ++ path ++ [nextValve]
-                rate = (fromIntegral pressure) / (fromIntegral $ length pathUpdate)
-            in st{
-                    sPaths = resetPaths,
-                    sValve = nextValve,
-                    sPath = pathUpdate,
-                    sPressure = pressure,
-                    sMinutes = minutesLeft,
-                    sLayout = M.insert nextValve (v{vFlowRate=0}) sLayout,
-                    sRate = rate
-                    }
+                pathUpdate = aPath ++ path ++ [nextValve]
+                rate = (fromIntegral pressure) / (fromIntegral $ totalMinutes * 2 - commonMinutesLeft)
+                newState = 
+                    tState{
+                        sPaths = resetPaths,
+                        sPressure = pressure,
+                        sLayout = M.insert nextValve (v{vFlowRate=0}) sLayout,
+                        sRate = rate,
+                        sMinutes = commonMinutesLeft
+                        }
+                newActorState = 
+                    actor{
+                        aMinutes = traceShowId minutesLeft,
+                        aPath = pathUpdate,
+                        aValve = nextValve
+                        }
+            in setActor tot{tState=newState} newActorState
 
 flowRateScore :: Valve -> [String] -> Int
 flowRateScore Valve{vFlowRate} path = vFlowRate `div` (length path + 1)  -- takes a minute to open valve
