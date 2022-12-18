@@ -11,7 +11,7 @@ main = do
     [] -> putStrLn "First argument should be filename to input"
     fileName:_ -> do
       contents <- readFile fileName
-      putStrLn $ show $ round1 $ initialState testInput
+      putStrLn $ show $ round1 $ initialState trueInput
       -- putStrLn $ show $ bridgeCross 10 contents
       -- putStrLn $ show $ treeHouse contents
         -- Left err -> putStrLn err

@@ -148,23 +148,42 @@ findAcyclic from layout = go [from]
 round1 :: State -> State
 round1 st = go [] [st]
     where 
-        go done []   = L.maximumBy byPressure done
-        go done left =
+        go complete []  = head complete
+        go complete (best:left) =
             -- if sMinutes state == 0 then state else
-                let (done1, left1) = L.partition (\s -> sMinutes s == 0) $ concat $ step1 <$> left
-                    done2 = done1 ++ done
-                    left2 = left1 ++ left -- L.foldl (\bag cur -> insertBagBy byPressure cur bag) left left1
-                in go done2 left2
-        byPressure st1 st2 = (sPressure st2 ) `compare` (sPressure st1) -- <>  sMinutes st2 `compare` sMinutes st1 -- higher pressure the better
+                let (complete1, left1) = L.partition (\s -> sMinutes s == 0) $ step1 (debugState best)
+                    completes = L.foldl (\bag cur -> insertBagBy (flip byPressure) cur bag) complete complete1 -- when complete, rank by pressure
+                    lefts = L.foldl (\bag cur -> insertBagBy (flip byPressure) cur bag) left left1  -- when searching, rank by release rate 
+                in 
+                    case (completes, (debugStates lefts)) of
+                        ((bestComp:_), (bestLeft:_)) -> 
+                            if byRate (traceShow (sPressure bestComp) bestComp) bestLeft /= GT -- there are better ones in lefts, try them out
+                                then go completes lefts 
+                                else bestComp   -- nothing is better in rate or pressure
+                        _ -> go completes lefts
+
+byRate st1 st2 = sRate st1 `compare` sRate st2 <> sPressure st1 `compare` sPressure st2 -- <>-- higher pressure the better
+byPressure st1 st2 = sPressure st1 `compare` sPressure st2 <> sRate st1 `compare` sRate st2 -- higher pressure the better
+
+debugState best = best -- trace ("best is " ++ show (sPressure best, sRate best, sPath best, sMinutes best)) best
+
+debugStates states = states -- trace ("Candidates are" ++ show ((\s -> (sPressure s, sRate s)) <$> states)) states
 
 step1 :: State -> [State]
 step1 st@State{sValve, sLayout, sPath, sMinutes, sPressure, sPaths} = 
     -- let minutesLeft = sMinutes - length bestValve - 1   -- 1 minute to open valve
     if M.null nextPaths
-        then [st{sMinutes=0}] -- no more to do, just use up a minute
+        then [idleState] -- no more to do, just use up a minute
         else snd <$> (M.toList $ tryOne <$> nextPaths)
         
     where 
+        idleState = 
+            let updatedPath = sPath ++ [last sPath]
+            in st{
+                sMinutes=0,
+                sRate=sPressure `div` 30,
+                sPath=updatedPath
+                }
         currentValve = sLayout M.! sValve
         nextPaths = M.mapWithKey (\(_, to) xs -> (to, sLayout M.! to, xs)) (sPaths M.! sValve)
         tryOne (nextValve, v@(Valve{vFlowRate}), path) = 
