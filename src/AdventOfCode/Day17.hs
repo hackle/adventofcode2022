@@ -5,6 +5,11 @@ module AdventOfCode.Day17 where
 import qualified Data.Matrix as M
 import Data.Bifunctor
 import Debug.Trace
+import qualified Data.Set as S
+import qualified Data.Vector as V
+import qualified Data.List as L
+import Data.List.Ordered (insertBagBy)
+import Control.Monad
 
 -- trace _ v = v
 -- traceShowId = id
@@ -100,7 +105,27 @@ fallBy1 st@State{ sJet = (j:js), sTower, sTop } shape =
         dropped = dropBy 1 jetted
     in if inRange sTower dropped
         then fallBy1 st{sJet=js} dropped
-        else st{ sTower = rest sTower jetted, sJet=js, sTop = max sTop (maximum $ fst <$> jetted) }
+        else truncateState st{ sTower = rest sTower jetted, sJet=js, sTop = max sTop (maximum $ fst <$> jetted) }
+
+truncateState :: State -> State
+truncateState st@State{sTower, sTop, sMemoTop, sHeight} =
+    let (yOffset, truncatedTower) = tryTruncate 100 sTower
+    in st{sTower = truncatedTower, sTop = sTop - yOffset, sHeight = sHeight - yOffset, sMemoTop = sMemoTop + fromIntegral yOffset }
+
+-- ghci> tryTruncate ((const '#' <$> newTower 4) <-> newTower 3)
+
+tryTruncate :: Int -> Tower -> (Int, Tower)    -- int for deleted rows
+tryTruncate minHeight tower = 
+    let maxRow = M.nrows tower
+        paths = map1 <$> (V.reverse $ V.filter (\(_, c) -> c == '#') $  V.indexed (M.getCol 1 tower))
+    in if maxRow < minHeight then (0, tower) else
+        case foldl mplus Nothing paths of
+            Nothing -> (0, tower)
+            Just valid -> 
+                let bottom = minimum $ fst <$>  valid
+                in (bottom - 1, M.submatrix bottom maxRow 1 7 tower)
+    where
+        map1 (idx, c) = if c == '#' then shortest tower (idx + 1, 1) else Nothing -- vector is 0 based, matrix 1 
 
 dropBy :: Int -> Shape -> Shape
 dropBy n = fmap (\(r, c) -> (r - n, c))
@@ -108,7 +133,14 @@ dropBy n = fmap (\(r, c) -> (r - n, c))
 rest :: Tower -> Shape -> Tower
 rest tower shape = foldl (\t c -> M.setElem '#' c t) tower shape
 
-data State = State { sJet :: Jet, sTower :: Tower, sHeight :: Int, sTop :: Int } deriving (Eq, Show)
+data State = State { 
+    sJet :: Jet, 
+    sTower :: Tower, 
+    sBase :: Int,   -- the floating base of the tower, it's not possible to fall through the base
+    sHeight :: Int, 
+    sTop :: Int,
+    sMemoTop :: Integer -- memoised top with truncation in consideration
+    } deriving (Eq, Show)
 
 minSpace :: Int
 minSpace = 3
@@ -117,7 +149,46 @@ minSpace = 3
 newTower height = M.matrix height 7 (const '.')
 
 initialState :: Jet -> State
-initialState jets = State { sJet = jets, sTower = newTower minSpace, sHeight = minSpace, sTop = 0 }
+initialState jets = State { sJet = jets, sTower = newTower minSpace, sHeight = minSpace, sTop = 0, sBase = 0, sMemoTop = 0 }
+
+-- ghci> shortest ((const '#' <$> newTower 4) <-> newTower 3) (1, 1)
+-- Just [(4,7),(4,6),(4,5),(4,4),(3,3),(2,2),(1,1)]
+-- ghci> shortest ((const '#' <$> newTower 4) <-> newTower 3) (2, 1)
+-- Just [(4,7),(4,6),(4,5),(4,4),(4,3),(3,2),(2,1)]
+-- ghci> shortest ((const '#' <$> newTower 4) <-> newTower 3) (3, 1)
+-- Just [(4,7),(4,6),(4,5),(4,4),(4,3),(4,2),(3,1)]
+
+-- ghci> shortest ((const '#' <$> newTower 4) <-> newTower 3) (4, 1)
+-- Just [(4,7),(4,6),(4,5),(4,4),(4,3),(4,2),(4,1)]
+-- ghci> shortest ((const '#' <$> newTower 4) <-> newTower 3) (5, 1)
+-- Just [(4,7),(4,6),(4,5),(4,4),(4,3),(4,2),(5,1)]
+-- ghci> shortest ((const '#' <$> newTower 4) <-> newTower 3) (6, 1)
+-- Nothing
+shortest :: Tower -> Coord -> Maybe [Coord]
+shortest tower from = go [[from]]
+    where
+        go :: [[Coord]] -> Maybe [Coord]
+        go [] = Nothing
+        go (best@((_, c):_):rest) = 
+            if c == 7 then Just best else
+                case (branchOut best tower) of
+                    [] -> go rest
+                    branches -> go $ foldl (\agg cur -> insertBagBy closerToRight cur agg) rest branches
+
+neighbourCoords = [(r, c) | r <- [-1, 0, 1], c <- [-1, 0, 1], (r, c) /= (0, 0)]
+addCoords (r1, c1) (r2, c2) = (r1 + r2, c1 + c2)
+
+branchOut :: [Coord] -> Tower -> [[Coord]]
+branchOut best@(h:_) tower =
+     filter (not . null) (getAt <$> neighbours)
+     where
+        neighbours = filter (\c -> not $ L.elem c best) (addCoords h <$> neighbourCoords)
+        getAt coord = 
+            case (uncurry M.safeGet) coord tower of
+                Just '#' -> coord:best
+                _ -> []
+
+closerToRight cs1@((_, c1):_) cs2@((_, c2):_) = c2 `compare` c1 -- <> L.length cs1 `compare` L.length cs2 -- higher the number the closer to the right, the better
 
 positionShape :: Int -> Shape -> Shape
 positionShape yBase shape =
@@ -133,11 +204,11 @@ shapeHeight shape =
     let ys = fst <$> shape
     in maximum ys - minimum ys + 1 -- inclusive
 
-keepFalling :: Jet -> Int -> State
-keepFalling jets n = foldl falling (initialState jets) (take n shapes)
+keepFalling :: Jet -> Integer -> State
+keepFalling jets n = foldl falling (initialState jets) (L.genericTake n shapes)
     where 
-        falling st shape = 
-            let State{sTower, sHeight, sTop} = st
+        falling st (idx, shape) = 
+            let State{sTower, sHeight, sTop} = (trace (stats idx) st)
                 -- rockTop = getRockTop sTower 
                 shapeBase = sTop + minSpace
                 newHeight = shapeBase + shapeHeight shape
@@ -145,7 +216,9 @@ keepFalling jets n = foldl falling (initialState jets) (take n shapes)
                 grownTower = sTower M.<-> newTower yOffset 
                 positionedShape = positionShape (shapeBase + 1) shape
             in fallBy1 st{sTower = grownTower, sHeight = newHeight } positionedShape
-        shapes = concat $ repeat [horiline, cross, club, vertiline, brick]
+        shapes :: [(Integer, Shape)]
+        shapes = zip [1..] $ concat $ repeat [horiline, cross, club, vertiline, brick]
+        stats idx = (show idx ++ "/" ++ show n ++ " " ++ show (idx * 100 `div` n) ++ "%")
 
 -- ghci> (upset $ M.setElem '#' (4, 7)  $  newTower 4) M.! (1, 7) == '#'
 -- True
