@@ -1,9 +1,11 @@
+{-# Language NamedFieldPuns #-}
 module AdventOfCode.Day18 where
 
 import qualified Data.Set as S
-import Data.List (sort)
+import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Bifunctor (bimap)
+import Debug.Trace
 
 type Coord = (Int, Int, Int) -- x y z
 
@@ -12,12 +14,12 @@ type Plane = (Coord, Coord, Coord, Coord)
 offsets :: [[Coord]]
 offsets = 
     [
-        sort [(x, y, 0) | x <- [0, 1], y <- [0, 1]],
-        sort [(x, y, 1) | x <- [0, 1], y <- [0, 1]],
-        sort [(0, y, z) | y <- [0, 1], z <- [0, 1]],
-        sort [(1, y, z) | y <- [0, 1], z <- [0, 1]],
-        sort [(x, 0, z) | x <- [0, 1], z <- [0, 1]],
-        sort [(x, 1, z) | x <- [0, 1], z <- [0, 1]]
+        L.sort [(x, y, 0) | x <- [0, 1], y <- [0, 1]],
+        L.sort [(x, y, 1) | x <- [0, 1], y <- [0, 1]],
+        L.sort [(0, y, z) | y <- [0, 1], z <- [0, 1]],
+        L.sort [(1, y, z) | y <- [0, 1], z <- [0, 1]],
+        L.sort [(x, 0, z) | x <- [0, 1], z <- [0, 1]],
+        L.sort [(x, 1, z) | x <- [0, 1], z <- [0, 1]]
     ]
 
 addCoords (x1, y1, z1) (x2, y2, z2) = (x1 + x2, y1 + y2, z1 + z2)
@@ -34,11 +36,157 @@ overlapsForPlanes coordss = foldl (\aggr crds -> snd $ M.insertLookupWithKey upd
     where
         updateCount k _ old_v = old_v + 1
 
-findOverlaps :: [Coord] -> ([[Coord]], [[Coord]])
+data CubeFacts = 
+    CF { 
+        cfCubes :: [[[Coord]]], -- each cube has multiple planes, each with multiple coords
+        cfOverlapped :: S.Set [Coord], 
+        cfExposed :: S.Set [Coord] 
+        } deriving (Eq, Show)
+
+findOverlaps :: [Coord] -> CubeFacts   -- overlapped, exposed
 findOverlaps coords = 
-    let planes = concatMap (planesForCoord offsets) coords
-        (overlapped, exposed) = M.partition (\c -> c > 1) (overlapsForPlanes planes)
-    in (M.keys overlapped, M.keys exposed)
+    let cubes = planesForCoord offsets <$> coords
+        (overlapped, exposed) = M.partition (\c -> c > 1) (overlapsForPlanes $ concat cubes)
+    in CF { cfCubes = fmap (fmap L.sort) cubes, cfOverlapped = S.fromList $ M.keys overlapped, cfExposed = S.fromList $ M.keys exposed }
+
+minPlanes :: Coord -> [[Coord]] -> [[Coord]]
+minPlanes coord exposed = L.filter (shares coord) exposed
+    where shares coord coords = any (== coord) coords
+
+expandPlane :: (S.Set [Coord], S.Set [Coord])   -- (been to, toGo)
+                -> ([Coord] -> [Coord] -> Bool)
+                -> [Coord]
+                -> (S.Set [Coord], S.Set [Coord])   -- (new neighbours, toGo)
+expandPlane (beenTo, toGo) inSameCube from =
+    S.partition (\p -> S.notMember p beenTo && sharesEdgesWith from p && not (isDiagonalTo inSameCube toGo from p)) toGo
+    
+-- > sharesEdgesWith [(0,0,0), (0,1,0), (1,0,0), (1,1,0)] [(0,0,0), (0,1,0), (1,0,0), (1,1,0)]
+-- True
+-- > sharesEdgesWith [(0,0,0), (0,1,0), (1,0,0), (1,1,0)] [(1,0,0), (2,0,0), (2,1,0), (1,1,0)]
+-- True
+-- sharesEdgesWith [(0,0,0), (0,1,0), (1,0,0), (1,1,0)] [(2,0,0), (3,0,0), (2,1,0), (3,1,0)]
+-- False
+sharesEdgesWith :: [Coord] -> [Coord] -> Bool
+sharesEdgesWith coords1 coords2 = 2 <= (S.size $ (S.fromList coords1) `S.intersection` (S.fromList coords2))
+    -- where [edges1, edges2] = (S.fromList . edgesOfPlane) <$> [coords1, coords2]
+
+-- > edgesOfPlane [(0,0,0), (0,1,0), (1,0,0), (1,1,0)]
+-- [((0,0,0),(0,1,0)),((0,0,0),(1,0,0)),((0,1,0),(1,1,0)),((1,0,0),(1,1,0))]
+edgesOfPlane :: [Coord] -> [(Coord, Coord)]
+edgesOfPlane coords = L.nub [ let [a,b] = L.sort [ca, cb] in (a, b) | ca <- coords, cb <- coords, ca /= cb && sharesPoint ca cb ]
+
+-- > nonSharedCoords [(0,0,0), (0,1,0), (1,0,0), (1,1,0)] [(0,0,0), (0,1,0), (1,0,0), (1,1,0)]
+-- ([],[])
+-- > nonSharedCoords [(0,0,0), (0,1,0), (1,0,0), (1,1,0)] [(1,0,0), (2,0,0), (2,1,0), (1,1,0)]
+-- ([(0,0,0),(0,1,0)],[(2,0,0),(2,1,0)])
+-- > nonSharedCoords [(0,0,0), (0,1,0), (1,0,0), (1,1,0)] [(2,0,0), (3,0,0), (2,1,0), (3,1,0)]
+-- ([(0,0,0),(0,1,0),(1,0,0),(1,1,0)],[(2,0,0),(2,1,0),(3,0,0),(3,1,0)])
+sharedCoords :: [Coord] -> [Coord] -> ([Coord], [Coord], [Coord]) -- shared, non-shared from 1, non-shared from 2
+sharedCoords coords1 coords2 =
+    let [sCoords1, sCoords2] = S.fromList <$> [coords1, coords2]
+        -- whats left out coords1 / coords 2?
+        -- both may be empty if coords1/2 are the same
+        [outer1, outer2] = uncurry S.difference <$> [(sCoords1, sCoords2), (sCoords2, sCoords1)]  
+        shared = S.intersection sCoords1 sCoords2
+    in (S.toList shared, S.toList outer1, S.toList outer2)
+
+
+-- isDiagonalTo (S.fromList [[(1,0,1),(2,0,1),(1,1,1),(2,1,1)]]) [(1,1,1), (2,1,1), (1,2,1),(2,2,1)] [(1,1,1), (2,1,1), (1,1,2),(2,1,2)]
+-- True
+-- isDiagonalTo (S.fromList [[(1,0,1),(1,1,1),(2,1,1),(2,0,1)]]) [(1,1,1), (2,1,1), (1,2,1),(2,2,1)] [(1,1,1), (2,1,1), (1,1,2),(2,1,2)]
+-- True
+isDiagonalTo :: ([Coord] -> [Coord] -> Bool) 
+            -> S.Set [Coord]    -- all sources
+            -> [Coord]  -- from plane
+            -> [Coord]  -- to plane
+            -> Bool  -- neighbouring planes in that direction
+isDiagonalTo inSameCube pool coords1 coords2 =
+    let (shared, outer1, outer2) = sharedCoords coords1 coords2
+        otherPlanes = findOtherHingePlanes inSameCube shared outer1 outer2
+        sortedPool = S.map L.sort pool
+        isDiag = any (\c -> S.member c sortedPool) (L.sort <$> otherPlanes)  -- 
+    in isDiag
+
+mirror a b = a + (a - b)
+mirror3 (x1, y1, z1) (x2, y2, z2) = (mirror x1 x2, mirror y1 y2, mirror z1 z2)
+
+-- > findOtherHingePlanes [(1,1,1), (2,1,1)] [(1,2,1),(2,2,1)] [(1,1,2),(2,1,2)]
+-- [[(1,0,1),(2,0,1),(1,1,1),(2,1,1)]]
+-- > findOtherHingePlanes [(1,1,1), (2,1,1)] [(1,2,1),(2,2,1)] [(1,0,1),(2,0,1)]
+-- [[(1,1,2),(2,1,2),(1,1,1),(2,1,1)],[(1,1,0),(2,1,0),(1,1,1),(2,1,1)]]
+
+-- findOtherHingePlanes [(2,3,5),(3,3,5)],[(2,3,4),(3,3,4)],[(2,4,5),(3,4,5)]
+-- [(2,3,5),(2,4,5),(3,3,5),(3,4,5)]
+findOtherHingePlanes :: 
+    ([Coord] -> [Coord] -> Bool)
+    -> [Coord]     -- shared coords between plane 1 & 2
+    -> [Coord]  -- non-shared coords from plane 1
+    -> [Coord]  -- non-shared coords from plane 2
+    -> [[Coord]] -- extra planes to make up hinges 
+findOtherHingePlanes inSameCube shared [coords1, coords2] [coords3, coords4] = 
+    if L.null middleExtensions 
+        then if inSameCube (coords1:coords2:shared) (coords3:coords4:shared) then [verticalExtension] else []
+        else filter (\c -> inSameCube (coords1:coords2:shared) c) middleExtensions
+    where
+        allCoords = [coords1, coords2, coords3, coords4]
+        extend setter = 
+            let [cs1, cs2] = shared
+                [cs1a, cs1b] = setter cs1
+                [cs2a, cs2b] = setter cs2
+            in [cs1a:cs2a:shared, cs1b:cs2b:shared]
+        middleExtensions = L.filter (not . L.null) $ concatMap (\(check, setter) -> if check then extend setter else []) extensions
+        verticalExtension = 
+            let [cs1, cs2] = shared
+            in (mirror3 cs1 coords1):(mirror3 cs2 coords2):shared
+        extensions = [
+                        (1 == (L.length $ L.nub (takeX <$> allCoords)), (\(xe, ye, ze) -> [(xe + 1, ye, ze), (xe - 1, ye, ze)])),
+                        (1 == (L.length $ L.nub (takeY <$> allCoords)), (\(xe, ye, ze) -> [(xe, ye + 1, ze), (xe, ye - 1, ze)])),
+                        (1 == (L.length $ L.nub (takeZ <$> allCoords)), (\(xe, ye, ze) -> [(xe, ye, ze + 1), (xe, ye, ze - 1)]))
+                        ]
+        takeX (x, _, _) = x
+        takeY (_, y, _) = y
+        takeZ (_, _, z) = z
+findOtherHingePlanes _ _ _ _ = []
+
+-- let cf = findOverlaps [(1,1,1),(2,1,1)]; mn = minimum (cfExposed cf) in bimap length length $ expandAll cf [mn] exposed
+-- (10,0)
+expandAll :: CubeFacts -> [[Coord]] -> (S.Set [Coord], S.Set [Coord])
+expandAll CF{ cfExposed = sources, cfCubes } origin =
+    let sOrigin = S.fromList origin
+    in go sOrigin (sOrigin, sources `S.difference` sOrigin)
+    where
+        inSameCube coords1 coords2 = 
+            let [sorted1, sorted2] = L.sort <$> [coords1, coords2] 
+                bothIn = any (\cube -> sorted1 `elem` cube && sorted2 `elem` cube) cfCubes
+            in bothIn -- trace (if not bothIn then "" else show (sorted1 ++ sorted2))
+        go froms state@(beenTo, toGo) = 
+            let expanded = S.map (expandPlane state inSameCube) froms
+                (newNeighbours, rest) = 
+                    foldl   (\(beenTo1, toGo1) (beenTo2, toGo2) -> (beenTo1 `S.union` beenTo2, toGo1 `S.intersection` toGo2)) 
+                            (S.empty, toGo) expanded
+                beenToSoFar = beenTo `S.union` newNeighbours
+            in if S.null newNeighbours
+                then (beenToSoFar, rest) -- no more neighbours to try
+                else go newNeighbours (beenToSoFar, rest)
+    
+-- > sharesPoint (1,1,2) (1,2,3)
+-- False
+-- > sharesPoint (1,1,2) (1,1,3)
+-- True
+sharesPoint (x1, y1, z1) (x2, y2, z2) = 
+    (x1, y1) == (x2, y2) ||
+    (x1, z1) == (x2, z2) ||
+    (y1, z1) == (y2, z2)
+
+airPocket :: [Coord]
+airPocket = [
+    (2,3,2),
+    (1,2,2),
+    (2,2,1),
+    (2,1,2),
+    (2,2,3),
+    (3,2,2)
+    ]
 
 testInput :: [Coord]
 testInput =
