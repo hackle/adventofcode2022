@@ -1,0 +1,101 @@
+State {_oreRobots = 1, _oreCount = 1, _clayRobots = 4, _clayCount = 26, _obsidianRobots = 3, _obsidianCount = 5, _geodeRobots = 3, _geodeCount = 8, _sRound = 0, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+        14), _geodeRobotCost = (2,
+        7)
+    }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 4, _clayCount = 22, _obsidianRobots = 3, _obsidianCount = 9, _geodeRobots = 2, _geodeCount = 6, _sRound = 1, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+            14), _geodeRobotCost = (2,
+            7)
+        }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 4, _clayCount = 18, _obsidianRobots = 3, _obsidianCount = 6, _geodeRobots = 2, _geodeCount = 4, _sRound = 2, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                14), _geodeRobotCost = (2,
+                7)
+            }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 4, _clayCount = 14, _obsidianRobots = 3, _obsidianCount = 10, _geodeRobots = 1, _geodeCount = 3, _sRound = 3, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                    14), _geodeRobotCost = (2,
+                    7)
+                }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 4, _clayCount = 10, _obsidianRobots = 3, _obsidianCount = 7, _geodeRobots = 1, _geodeCount = 2, _sRound = 4, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                        14), _geodeRobotCost = (2,
+                        7)
+                    }, _preState = Just (State {_oreRobots = 1, _oreCount = 3, _clayRobots = 4, _clayCount = 20, _obsidianRobots = 2, _obsidianCount = 5, _geodeRobots = 1, _geodeCount = 1, _sRound = 5, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                            14), _geodeRobotCost = (2,
+                            7)
+                        }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 4, _clayCount = 16, _obsidianRobots = 2, _obsidianCount = 3, _geodeRobots = 1, _geodeCount = 0, _sRound = 6, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                14), _geodeRobotCost = (2,
+                                7)
+                            }, _preState = Just (State {_oreRobots = 1, _oreCount = 3, _clayRobots = 4, _clayCount = 12, _obsidianRobots = 2, _obsidianCount = 8, _geodeRobots = 0, _geodeCount = 0, _sRound = 7, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                    14), _geodeRobotCost = (2,
+                                    7)
+                                }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 4, _clayCount = 8, _obsidianRobots = 2, _obsidianCount = 6, _geodeRobots = 0, _geodeCount = 0, _sRound = 8, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                        14), _geodeRobotCost = (2,
+                                        7)
+                                    }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 4, _clayCount = 4, _obsidianRobots = 2, _obsidianCount = 4, _geodeRobots = 0, _geodeCount = 0, _sRound = 9, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                            14), _geodeRobotCost = (2,
+                                            7)
+                                        }, _preState = Just (State {_oreRobots = 1, _oreCount = 3, _clayRobots = 4, _clayCount = 14, _obsidianRobots = 1, _obsidianCount = 3, _geodeRobots = 0, _geodeCount = 0, _sRound = 10, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                14), _geodeRobotCost = (2,
+                                                7)
+                                            }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 4, _clayCount = 10, _obsidianRobots = 1, _obsidianCount = 2, _geodeRobots = 0, _geodeCount = 0, _sRound = 11, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                    14), _geodeRobotCost = (2,
+                                                    7)
+                                                }, _preState = Just (State {_oreRobots = 1, _oreCount = 3, _clayRobots = 3, _clayCount = 7, _obsidianRobots = 1, _obsidianCount = 1, _geodeRobots = 0, _geodeCount = 0, _sRound = 12, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                        14), _geodeRobotCost = (2,
+                                                        7)
+                                                    }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 3, _clayCount = 4, _obsidianRobots = 1, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 13, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                            14), _geodeRobotCost = (2,
+                                                            7)
+                                                        }, _preState = Just (State {_oreRobots = 1, _oreCount = 4, _clayRobots = 3, _clayCount = 15, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 14, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                14), _geodeRobotCost = (2,
+                                                                7)
+                                                            }, _preState = Just (State {_oreRobots = 1, _oreCount = 3, _clayRobots = 3, _clayCount = 12, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 15, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                    14), _geodeRobotCost = (2,
+                                                                    7)
+                                                                }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 3, _clayCount = 9, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 16, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                        14), _geodeRobotCost = (2,
+                                                                        7)
+                                                                    }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 3, _clayCount = 6, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 17, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                            14), _geodeRobotCost = (2,
+                                                                            7)
+                                                                        }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 2, _clayCount = 4, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 18, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                14), _geodeRobotCost = (2,
+                                                                                7)
+                                                                            }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 2, _clayCount = 2, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 19, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                    14), _geodeRobotCost = (2,
+                                                                                    7)
+                                                                                }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 1, _clayCount = 1, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 20, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                        14), _geodeRobotCost = (2,
+                                                                                        7)
+                                                                                    }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 1, _clayCount = 0, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 21, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                            14), _geodeRobotCost = (2,
+                                                                                            7)
+                                                                                        }, _preState = Just (State {_oreRobots = 1, _oreCount = 2, _clayRobots = 0, _clayCount = 0, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 22, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                                14), _geodeRobotCost = (2,
+                                                                                                7)
+                                                                                            }, _preState = Just (State {_oreRobots = 1, _oreCount = 1, _clayRobots = 0, _clayCount = 0, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 23, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                                    14), _geodeRobotCost = (2,
+                                                                                                    7)
+                                                                                                }, _preState = Just (State {_oreRobots = 1, _oreCount = 0, _clayRobots = 0, _clayCount = 0, _obsidianRobots = 0, _obsidianCount = 0, _geodeRobots = 0, _geodeCount = 0, _sRound = 24, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,
+                                                                                                        14), _geodeRobotCost = (2,
+                                                                                                        7)
+                                                                                                    }, _preState = Nothing
+                                                                                                })
+                                                                                            })
+                                                                                        })
+                                                                                    })
+                                                                                })
+                                                                            })
+                                                                        })
+                                                                    })
+                                                                })
+                                                            })
+                                                        })
+                                                    })
+                                                })
+                                            })
+                                        })
+                                    })
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })
+}
