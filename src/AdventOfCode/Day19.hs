@@ -8,11 +8,11 @@ import Control.Lens
 import qualified Data.List.Ordered as PQ
 import qualified Data.List as L
 import Control.Parallel.Strategies
-import Debug.Trace
+-- import Debug.Trace
 import qualified Data.Set as S
 import Control.Monad
 
--- trace x y = y
+trace x y = y
 
 -- newtype Ore = Ore { unOre :: Int } deriving (Eq, Show)
 -- newtype Clay = Clay { unClay :: Int } deriving (Eq, Show)
@@ -97,22 +97,24 @@ instance Ord State where
         (st1 ^. oreRobots) `compare` (st2 ^. oreRobots) <>
         (st2 ^. sRound) `compare` (st1 ^. sRound)   -- lower the minute the better
 
-initialState bp = State {
-    _oreCount = 0,
-    _oreRobots = 1,
-    _clayCount = 0,
-    _clayRobots = 0,
-    _obsidianRobots = 0,
-    _obsidianCount = 0,
-    _geodeRobots = 0,
-    _geodeCount = 0,
-    _sRound = maxMinutes,
-    _blueprint = bp,
-    _preState = Nothing,
-    _actionHint = BAU,
-    _firstGeodeRound = 0,
-    _simulatedGeode = 0
-    }
+initialState bp = 
+    let st = State {
+        _oreCount = 0,
+        _oreRobots = 1,
+        _clayCount = 0,
+        _clayRobots = 0,
+        _obsidianRobots = 0,
+        _obsidianCount = 0,
+        _geodeRobots = 0,
+        _geodeCount = 0,
+        _sRound = maxMinutes,
+        _blueprint = bp,
+        _preState = Nothing,
+        _actionHint = BAU,
+        _firstGeodeRound = 0,
+        _simulatedGeode = 0
+        }
+    in simulatedGeode .~ (simulateSt st) $ st
 
 collect stOld stNew =
     stNew &
@@ -255,12 +257,12 @@ runBlueprint state = go (sRound .~ 0 $ state) [state] S.empty
         go best [] _ = error "Something terrible happened"
         go best togo beenTo = 
             let (done, unfinished) = L.span (\s -> s ^. sRound == 0) togo
-                (bestest:_) = PQ.insertBag best done
+                bestest = minimum (best:done)
                 (candidate:leftYet) = unfinished    -- sorted by potential
                 (left, ignored) = L.partition (\s -> not (s `S.member` beenTo || noHopeVs bestest s)) leftYet
             --  go (best:left) (beenTo `S.union` S.fromList (newBest:beenTo1))
                 expanded = next candidate
-                stats = show [L.length unfinished, L.length left, L.length expanded, best ^. sRound, best ^. geodeCount ]
+                stats = show [L.length unfinished, L.length left, L.length ignored, L.length expanded, best ^. sRound, best ^. geodeCount ]
                 nextTogo = PQ.union expanded left
             in 
                 if L.null unfinished 
@@ -268,7 +270,7 @@ runBlueprint state = go (sRound .~ 0 $ state) [state] S.empty
                     else trace stats $ go bestest nextTogo (S.unions [beenTo, S.fromList done, S.fromList ignored])
 
 noHopeVs :: State -> State -> Bool
-noHopeVs mx st = wontCatchup
+noHopeVs mx st = wontCatchup || tooLateForGeode
      -- no point comparing against 0
     where
         geodeCnt = st ^. geodeCount
