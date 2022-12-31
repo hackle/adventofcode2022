@@ -10,6 +10,7 @@ import qualified Data.List as L
 import Control.Parallel.Strategies
 import Debug.Trace
 import qualified Data.Set as S
+import Control.Monad
 
 -- trace x y = y
 
@@ -28,7 +29,7 @@ data Blueprint = BP {
 
 makeLenses ''Blueprint
 
-data ActionHint = BAU | SkipOreRobot | SkipClayRobot | SkipObsidianRobot | SkipGeoRobot deriving (Eq, Show)
+data ActionHint = BAU | SkipOre | SkipClay | SkipObsidian | SkipGeo deriving (Eq, Show)
 
 data State = State {
     _oreRobots :: Int,
@@ -42,7 +43,9 @@ data State = State {
     _sRound :: Int,
     _blueprint :: Blueprint,
     _preState :: Maybe State,
-    _actionHint :: ActionHint
+    _actionHint :: ActionHint,
+    _firstGeodeRound :: Int,
+    _simulatedGeode :: Int
     } deriving (Eq, Show)
 
 makeLenses ''State
@@ -106,7 +109,9 @@ initialState bp = State {
     _sRound = maxMinutes,
     _blueprint = bp,
     _preState = Nothing,
-    _actionHint = BAU
+    _actionHint = BAU,
+    _firstGeodeRound = 0,
+    _simulatedGeode = 0
     }
 
 collect stOld stNew =
@@ -117,20 +122,27 @@ collect stOld stNew =
     geodeCount %~ (+ stOld ^. geodeRobots) -- &
     -- (\s -> projectedGeode .~ (projection s) $ s)
 
+decrRound st = sRound %~ (\x -> x - 1) $ st
 
 next :: State -> [State]
+next st@State{_sRound = 0 } = [st]
+next st@State{_sRound = 1 } = [decrRound $ collect st st]
 next st =
-    st &
-    makeGeodeRobot (st^.blueprint.geodeRobotCost) &
-    concatMap (makeObsidianRobot $ st^.blueprint.obsidianRobotCost) &
-    concatMap (makeClayRobot $ st^.blueprint.clayRobotCost) &
-    concatMap (makeOreRobot $ st^.blueprint.oreRobotCost) &
-    fmap (collect st) &
-    -- mapped.preState .~ Just st &
-    mapped.sRound %~ (\x -> x - 1) &
-    PQ.nub . L.sort
+    case concat attempts of
+        [] -> next $ collect st $ decrRound st
+        sts -> L.sort $ L.nub (setSimu . collect st . decrRound <$> sts)
+    where 
+        setSimu st1 = simulatedGeode .~ (simulateSt st1) $ st1
+        attempts =
+            let geode = resetSkip <$> makeGeodeRobot st
+            in if not $ L.null geode then [geode] else
+                ($ st) <$> [
+                    withSkip SkipObsidian makeObsidianRobot,
+                    withSkip SkipClay makeClayRobot,
+                    withSkip SkipOre makeOreRobot
+                    ]
 
-maxMinutes = 24
+maxMinutes = 32
 
 -- ghci> fmap (fmap $ Prelude.take 2) $ resetRobots 1 [[2..]]
 -- Just [[1,2]]
@@ -163,54 +175,66 @@ takeResource needed lCnt st =
 addRobot :: Lens' State Int -> State -> Maybe State
 addRobot lRobot st = Just $ lRobot %~ (+ 1) $ st -- starts with -1 as robot is built in a minute
 
-makeGeodeRobot :: (Int, Int) -> State -> [State]
-makeGeodeRobot (ore, obsidian) st = 
-    if tooLateToBuy then [st] else
+makeGeodeRobot :: State -> [State]
+makeGeodeRobot st = 
+    if tooLateToBuy then [] else
         case takeResource ore oreCount st >>= takeResource obsidian obsidianCount >>= addRobot geodeRobots of
-            Nothing -> [st]
-            Just st1 -> [actionHint .~ BAU $ st1]   -- always build geode
+            Nothing -> []
+            Just st1 -> [firstGeodeRound %~ (max (st ^. sRound)) $ st1]   -- always build geode
     where
+        (ore, obsidian) = st ^. blueprint.geodeRobotCost
         tooLateToBuy = st ^. sRound <= 1
         -- +1 to make new robot
 
+skip ah st = actionHint .~ ah $ st
+resetSkip = skip BAU
+withSkip ah f st = 
+    if st ^. actionHint == ah then [] else
+        case f st of
+            [] -> []
+            sts -> skip ah st : (resetSkip <$> sts) 
+
 -- makeObsidianRobot (3, 14) State{_oreRobots = [[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]], _clayRobots = [], _obsidianRobots = [], _geodeRobots = [], _sRound = 17, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,14), _geodeRobotCost = (2,7)}}
-makeObsidianRobot :: (Int, Int) -> State -> [State]
-makeObsidianRobot (ore, clay) st = 
-    if st ^. actionHint == SkipObsidianRobot || tooLateToBuy || noExtra then [st] else
+makeObsidianRobot :: State -> [State]
+makeObsidianRobot st = 
+    if tooLateToBuy || noExtra then [] else
         case takeResource ore oreCount st >>= takeResource clay clayCount >>= addRobot obsidianRobots of
-            Nothing -> [st]
-            Just st1 -> [actionHint .~ BAU $ st1, actionHint .~ SkipObsidianRobot $ st]   -- always build obsidian
+            Nothing -> []
+            Just st1 -> [st1]   -- always build obsidian
     where 
-        noExtra = st ^. obsidianRobots == st ^. blueprint.geodeRobotCost._2 
+        (ore, clay) = st ^. blueprint.obsidianRobotCost
+        noExtra = st ^. obsidianRobots >= st ^. blueprint.geodeRobotCost._2 
         tooLateToBuy = st ^. sRound <= 3
         -- + 1 to make new robot (this minute)
         -- + 1 to produce new obsidian
         -- + 1 to make Geode robot
 
-makeClayRobot :: Int -> State -> [State]
-makeClayRobot ore st = 
-    if st ^. actionHint == SkipClayRobot || tooLateToBuy || noExtra then [st] else
+makeClayRobot :: State -> [State]
+makeClayRobot st = 
+    if tooLateToBuy || noExtra then [] else
         case takeResource ore oreCount st >>= addRobot clayRobots of
-            Nothing -> [st]
-            Just st1 -> [actionHint .~ BAU $ st1, actionHint .~ SkipClayRobot $ st ]
+            Nothing -> []
+            Just st1 -> [st1]
     where
-        noExtra = st ^. clayRobots == st ^. blueprint.obsidianRobotCost._2
-        tooLateToBuy = st ^. sRound <= 5
+        ore = st ^. blueprint.clayRobotCost
+        noExtra = st ^. clayRobots >= st ^. blueprint.obsidianRobotCost._2
+        tooLateToBuy = st ^. sRound <= 6
         -- 1 minute to make clay robot (this minute)
         -- + 1 minute to produce a clay 
         -- + 1 minute to make an obsidian robot
         -- + 1 minute to produce obsidian
         -- + 1 minute to make a geode robot
 
-makeOreRobot :: Int -> State -> [State]
-makeOreRobot ore st = 
-    if st ^. actionHint == SkipOreRobot || tooLateToBuy || noExtra then [st] else
+makeOreRobot :: State -> [State]
+makeOreRobot st = 
+    if tooLateToBuy || noExtra then [] else
         case takeResource ore oreCount st >>= addRobot oreRobots of
-            Nothing -> [st]
-            Just st1 -> [actionHint .~ BAU $ st1, actionHint .~ SkipOreRobot $ st]
+            Nothing -> []
+            Just st1 -> [st1]
     where
-        noExtra = st ^. oreRobots == st ^. blueprint.oreRobotCost
-        tooLateToBuy = st ^. sRound <= 7
+        ore = st ^. blueprint.oreRobotCost
+        noExtra = st ^. oreRobots >= maximum [ st ^. blueprint.obsidianRobotCost._1, st ^. blueprint.geodeRobotCost._1, st ^. blueprint.clayRobotCost, st ^. blueprint.oreRobotCost ]
+        tooLateToBuy = st ^. sRound <= 15
         -- 1 minute to make ore robot (this minute)
         -- 1 minute to produce ore (this minute)
         -- 1 minute to make clay robot (this minute)
@@ -225,39 +249,58 @@ blueprints = [
     BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost = (3, 8), _geodeRobotCost = (3, 12)}
     ]
 
-bpTest = blueprints !! 0
-
 runBlueprint :: State -> State
-runBlueprint state = go Nothing [state] S.empty
+runBlueprint state = go (sRound .~ 0 $ state) [state] S.empty
     where
-        go :: Maybe State -> [State] -> S.Set State -> State
-        go Nothing [] _ = error "This shouldn't have happened!"
-        go (Just best) [] _ = best
-        go bestem togo@(candidate:rest) beenTo = 
-            if candidate ^. sRound == 0 
-                then 
-                    let newBest = maybe candidate (min candidate) bestem
-                        (left, beenTo1) = L.partition (\s -> not (s `S.member` beenTo || noHopeVs newBest s)) rest
-                    in go (Just newBest) left (beenTo `S.union` S.fromList (newBest:beenTo1))
-                else 
-                    let expanded = next candidate
-                        maxGeode = maybe 0 (\s -> s ^. geodeCount) bestem
-                        stats = show [L.length togo, maxGeode ]
-                    in trace stats $ go bestem (PQ.nub $ PQ.union rest expanded) beenTo
+        go best [] _ = error "Something terrible happened"
+        go best togo beenTo = 
+            let (done, unfinished) = L.span (\s -> s ^. sRound == 0) togo
+                (bestest:_) = PQ.insertBag best done
+                (candidate:leftYet) = unfinished    -- sorted by potential
+                (left, ignored) = L.partition (\s -> not (s `S.member` beenTo || noHopeVs bestest s)) leftYet
+            --  go (best:left) (beenTo `S.union` S.fromList (newBest:beenTo1))
+                expanded = next candidate
+                stats = show [L.length unfinished, L.length left, L.length expanded, best ^. sRound, best ^. geodeCount ]
+                nextTogo = PQ.union expanded left
+            in 
+                if L.null unfinished 
+                    then bestest 
+                    else trace stats $ go bestest nextTogo (S.unions [beenTo, S.fromList done, S.fromList ignored])
 
 noHopeVs :: State -> State -> Bool
-noHopeVs mx st = trace (show [mx, st]) $ mxGeodeCnt > 0 && (st == mx || wontCatchup || minute1)
+noHopeVs mx st = wontCatchup
      -- no point comparing against 0
     where
         geodeCnt = st ^. geodeCount
         mxGeodeCnt = mx ^. geodeCount
-        wontCatchup = geodeCnt + sum [1..st ^. sRound - 1] <= mxGeodeCnt -- can't possibly catch up
-        minute1 = (st ^. sRound) == 1 && (st ^. geodeRobots) <= mxGeodeCnt - geodeCnt -- not enough production to make up 
+        tooLateForGeode = geodeCnt > 0 && mxGeodeCnt > 0 && geodeCnt < mxGeodeCnt && st ^. firstGeodeRound < mx ^. firstGeodeRound
+        wontCatchup = st ^. simulatedGeode <= mxGeodeCnt -- can't possibly catch up
+
+simulateSt st = res ^. _3
+    where
+        res = 
+            simulate 
+                (st ^. obsidianCount) 
+                (st ^. obsidianRobots) 
+                (st ^. blueprint.geodeRobotCost._2) 
+                (st ^. geodeCount) 
+                (st ^. geodeRobots) 
+                (st ^. sRound)
+
+-- [15,9,0,1,8]
+simulate obs obsRbts obsCost geode geodeRbts rnd =
+    let obsIncr = [1..rnd]
+        incr (obsAggr, rbts, geodeAggr) rnd = 
+            let aggrNew = obsAggr + rbts
+            in if obsAggr >= obsCost 
+                then (aggrNew - obsCost, rbts + 1, geodeAggr + geodeRbts + rnd - 1) 
+                else (aggrNew, rbts + 1, geodeAggr + geodeRbts)
+    in foldl incr (obs, obsRbts, geode) (reverse obsIncr)
 
 runGroup :: [Blueprint] -> Int
 runGroup bps = 
-    let scores = [ (idx * totalGeode bp) | (idx, bp) <- indexed ]
-    in sum (scores `using` parList rdeepseq)
+    let scores = [ totalGeode bp | (idx, bp) <- indexed ]
+    in product (scores `using` parList rdeepseq)
     where 
         indexed = zip [1..] bps
         totalGeode bp = 
@@ -269,32 +312,32 @@ testBlueprints :: [Blueprint]
 testBlueprints = [
     BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 9), _geodeRobotCost =  (3, 9) },
     BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 20), _geodeRobotCost =  (4, 8) },
-    BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost =(2, 16), _geodeRobotCost =  (2, 9) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(4, 20), _geodeRobotCost =  (4, 16) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 16), _geodeRobotCost =  (2, 15) },
-    BP { _oreRobotCost = 2, _clayRobotCost = 2, _obsidianRobotCost =(2, 20), _geodeRobotCost =  (2, 14) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(3, 7), _geodeRobotCost =  (3, 20) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(3, 14), _geodeRobotCost =  (4, 15) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(3, 7), _geodeRobotCost =  (2, 7) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(2, 11), _geodeRobotCost =  (2, 19) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 20), _geodeRobotCost =  (2, 12) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 20), _geodeRobotCost =  (2, 8) },
-    BP { _oreRobotCost = 2, _clayRobotCost = 4, _obsidianRobotCost =(3, 14), _geodeRobotCost =  (4, 9) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(4, 18), _geodeRobotCost =  (3, 8) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(2, 9), _geodeRobotCost =  (3, 15) },
-    BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost =(3, 11), _geodeRobotCost =  (2, 16) },
-    BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost =(3, 13), _geodeRobotCost =  (3, 15) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 16), _geodeRobotCost =  (3, 20) },
-    BP { _oreRobotCost = 2, _clayRobotCost = 4, _obsidianRobotCost =(3, 19), _geodeRobotCost =  (4, 8) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 16), _geodeRobotCost =  (2, 15) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 7), _geodeRobotCost =  (2, 19) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(2, 14), _geodeRobotCost =  (3, 17) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 8), _geodeRobotCost =  (2, 8) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 7), _geodeRobotCost =  (4, 17) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 16), _geodeRobotCost =  (3, 9) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 15), _geodeRobotCost =  (4, 9) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(2, 20), _geodeRobotCost =  (4, 7) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 17), _geodeRobotCost =  (4, 8) },
-    BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(3, 12), _geodeRobotCost =  (3, 17) },
-    BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 5), _geodeRobotCost =  (2, 10) }
+    BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost =(2, 16), _geodeRobotCost =  (2, 9) }
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(4, 20), _geodeRobotCost =  (4, 16) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 16), _geodeRobotCost =  (2, 15) },
+    -- BP { _oreRobotCost = 2, _clayRobotCost = 2, _obsidianRobotCost =(2, 20), _geodeRobotCost =  (2, 14) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(3, 7), _geodeRobotCost =  (3, 20) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(3, 14), _geodeRobotCost =  (4, 15) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(3, 7), _geodeRobotCost =  (2, 7) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(2, 11), _geodeRobotCost =  (2, 19) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 20), _geodeRobotCost =  (2, 12) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 20), _geodeRobotCost =  (2, 8) },
+    -- BP { _oreRobotCost = 2, _clayRobotCost = 4, _obsidianRobotCost =(3, 14), _geodeRobotCost =  (4, 9) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(4, 18), _geodeRobotCost =  (3, 8) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(2, 9), _geodeRobotCost =  (3, 15) },
+    -- BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost =(3, 11), _geodeRobotCost =  (2, 16) },
+    -- BP { _oreRobotCost = 2, _clayRobotCost = 3, _obsidianRobotCost =(3, 13), _geodeRobotCost =  (3, 15) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 16), _geodeRobotCost =  (3, 20) },
+    -- BP { _oreRobotCost = 2, _clayRobotCost = 4, _obsidianRobotCost =(3, 19), _geodeRobotCost =  (4, 8) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 16), _geodeRobotCost =  (2, 15) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 7), _geodeRobotCost =  (2, 19) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(2, 14), _geodeRobotCost =  (3, 17) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 8), _geodeRobotCost =  (2, 8) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 7), _geodeRobotCost =  (4, 17) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 16), _geodeRobotCost =  (3, 9) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 3, _obsidianRobotCost =(4, 15), _geodeRobotCost =  (4, 9) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(2, 20), _geodeRobotCost =  (4, 7) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 3, _obsidianRobotCost =(3, 17), _geodeRobotCost =  (4, 8) },
+    -- BP { _oreRobotCost = 3, _clayRobotCost = 4, _obsidianRobotCost =(3, 12), _geodeRobotCost =  (3, 17) },
+    -- BP { _oreRobotCost = 4, _clayRobotCost = 4, _obsidianRobotCost =(4, 5), _geodeRobotCost =  (2, 10) }
     ]
