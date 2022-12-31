@@ -9,6 +9,7 @@ import qualified Data.List.Ordered as PQ
 import qualified Data.List as L
 import Control.Parallel.Strategies
 import Debug.Trace
+import qualified Data.Set as S
 
 -- trace x y = y
 
@@ -27,6 +28,8 @@ data Blueprint = BP {
 
 makeLenses ''Blueprint
 
+data ActionHint = BAU | SkipOreRobot | SkipClayRobot | SkipObsidianRobot | SkipGeoRobot deriving (Eq, Show)
+
 data State = State {
     _oreRobots :: Int,
     _oreCount :: Int,
@@ -38,8 +41,8 @@ data State = State {
     _geodeCount :: Int,
     _sRound :: Int,
     _blueprint :: Blueprint,
-    _preState :: Maybe State
-    -- _projectedGeode :: Int
+    _preState :: Maybe State,
+    _actionHint :: ActionHint
     } deriving (Eq, Show)
 
 makeLenses ''State
@@ -86,9 +89,10 @@ instance Ord State where
         (st1 ^. obsidianCount) `compare` (st2 ^. obsidianCount) <> 
         (st1 ^. obsidianRobots) `compare` (st2 ^. obsidianRobots) <> 
         (st1 ^. clayCount) `compare` (st2 ^. clayCount) <> 
-        (st1 ^. clayRobots) `compare` (st2 ^. clayRobots)
-
-sumHeads xs = sum xs
+        (st1 ^. clayRobots) `compare` (st2 ^. clayRobots) <>
+        (st1 ^. oreCount) `compare` (st2 ^. oreCount) <>
+        (st1 ^. oreRobots) `compare` (st2 ^. oreRobots) <>
+        (st2 ^. sRound) `compare` (st1 ^. sRound)   -- lower the minute the better
 
 initialState bp = State {
     _oreCount = 0,
@@ -101,8 +105,8 @@ initialState bp = State {
     _geodeCount = 0,
     _sRound = maxMinutes,
     _blueprint = bp,
-    _preState = Nothing
-    -- _projectedGeode = 0
+    _preState = Nothing,
+    _actionHint = BAU
     }
 
 collect stOld stNew =
@@ -117,14 +121,14 @@ collect stOld stNew =
 next :: State -> [State]
 next st =
     st &
-    sRound %~ (\x -> x - 1) &
     makeGeodeRobot (st^.blueprint.geodeRobotCost) &
     concatMap (makeObsidianRobot $ st^.blueprint.obsidianRobotCost) &
     concatMap (makeClayRobot $ st^.blueprint.clayRobotCost) &
     concatMap (makeOreRobot $ st^.blueprint.oreRobotCost) &
     fmap (collect st) &
-    mapped.preState .~ Just st &
-    L.sort . L.nub
+    -- mapped.preState .~ Just st &
+    mapped.sRound %~ (\x -> x - 1) &
+    PQ.nub . L.sort
 
 maxMinutes = 24
 
@@ -161,32 +165,59 @@ addRobot lRobot st = Just $ lRobot %~ (+ 1) $ st -- starts with -1 as robot is b
 
 makeGeodeRobot :: (Int, Int) -> State -> [State]
 makeGeodeRobot (ore, obsidian) st = 
-    case takeResource ore oreCount st >>= takeResource obsidian obsidianCount >>= addRobot geodeRobots of
-        Nothing -> [st]
-        Just st1 -> [st1]   -- always build geode
+    if tooLateToBuy then [st] else
+        case takeResource ore oreCount st >>= takeResource obsidian obsidianCount >>= addRobot geodeRobots of
+            Nothing -> [st]
+            Just st1 -> [actionHint .~ BAU $ st1]   -- always build geode
+    where
+        tooLateToBuy = st ^. sRound <= 1
+        -- +1 to make new robot
 
 -- makeObsidianRobot (3, 14) State{_oreRobots = [[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]], _clayRobots = [], _obsidianRobots = [], _geodeRobots = [], _sRound = 17, _blueprint = BP {_oreRobotCost = 4, _clayRobotCost = 2, _obsidianRobotCost = (3,14), _geodeRobotCost = (2,7)}}
 makeObsidianRobot :: (Int, Int) -> State -> [State]
 makeObsidianRobot (ore, clay) st = 
-    case takeResource ore oreCount st >>= takeResource clay clayCount >>= addRobot obsidianRobots of
-        Nothing -> [st]
-        Just st1 -> [st1]   -- always build obsidian
+    if st ^. actionHint == SkipObsidianRobot || tooLateToBuy || noExtra then [st] else
+        case takeResource ore oreCount st >>= takeResource clay clayCount >>= addRobot obsidianRobots of
+            Nothing -> [st]
+            Just st1 -> [actionHint .~ BAU $ st1, actionHint .~ SkipObsidianRobot $ st]   -- always build obsidian
+    where 
+        noExtra = st ^. obsidianRobots == st ^. blueprint.geodeRobotCost._2 
+        tooLateToBuy = st ^. sRound <= 3
+        -- + 1 to make new robot (this minute)
+        -- + 1 to produce new obsidian
+        -- + 1 to make Geode robot
 
 makeClayRobot :: Int -> State -> [State]
 makeClayRobot ore st = 
-    if not $ worthyNewRobot st then [st] else
+    if st ^. actionHint == SkipClayRobot || tooLateToBuy || noExtra then [st] else
         case takeResource ore oreCount st >>= addRobot clayRobots of
             Nothing -> [st]
-            Just st1 -> [st1, st]
+            Just st1 -> [actionHint .~ BAU $ st1, actionHint .~ SkipClayRobot $ st ]
+    where
+        noExtra = st ^. clayRobots == st ^. blueprint.obsidianRobotCost._2
+        tooLateToBuy = st ^. sRound <= 5
+        -- 1 minute to make clay robot (this minute)
+        -- + 1 minute to produce a clay 
+        -- + 1 minute to make an obsidian robot
+        -- + 1 minute to produce obsidian
+        -- + 1 minute to make a geode robot
 
 makeOreRobot :: Int -> State -> [State]
 makeOreRobot ore st = 
-    if not $ worthyNewRobot st then [st] else
-        maybe [st] (:[st]) $ takeResource ore oreCount st >>= addRobot oreRobots
-
-worthyNewRobot st = 
-    let inOrder = (st ^. sRound - 1) * (st ^. obsidianRobots + 1) + st ^. obsidianCount >= st ^. blueprint.geodeRobotCost._2   -- no new obsidian coming in
-    in inOrder
+    if st ^. actionHint == SkipOreRobot || tooLateToBuy || noExtra then [st] else
+        case takeResource ore oreCount st >>= addRobot oreRobots of
+            Nothing -> [st]
+            Just st1 -> [actionHint .~ BAU $ st1, actionHint .~ SkipOreRobot $ st]
+    where
+        noExtra = st ^. oreRobots == st ^. blueprint.oreRobotCost
+        tooLateToBuy = st ^. sRound <= 7
+        -- 1 minute to make ore robot (this minute)
+        -- 1 minute to produce ore (this minute)
+        -- 1 minute to make clay robot (this minute)
+        -- + 1 minute to produce a clay 
+        -- + 1 minute to make an obsidian robot
+        -- + 1 minute to produce obsidian
+        -- + 1 minute to make a geode robot
 
 blueprints :: [Blueprint]
 blueprints = [
@@ -196,45 +227,32 @@ blueprints = [
 
 bpTest = blueprints !! 0
 
-runBlueprint :: State -> [State] -> State
-runBlueprint _best states = 
-    let poolBest = maybe _best id $ fst <$> L.uncons states
-        best = trace 
-                (show [ _best ^. geodeCount, _best ^. obsidianCount ] ++ "Round " ++ (show (_best ^. sRound)) ++ " Pool size " ++ (show $ L.length states)) 
-                $ min poolBest _best
-        -- cutoff = best ^. projectedGeode 
-        -- filteredByBest = PQ.filter (\st -> st ^. projectedGeode >= cutoff) nexts
-    in
-        let pool = L.filter (worthy best) states
-            (onpar, subpar) = L.splitAt (L.length pool `div` 2) pool
-            [xOnpar, xSubpar] = PQ.unionAll . PQ.sort . fmap next <$> [ onpar, subpar ]
-            combined = PQ.union xOnpar xSubpar
-        in if L.null states || (L.head states) ^. sRound == 0 
-            then best
-            else 
-                if L.null xOnpar || L.null xSubpar
-                    then 
-                        if L.null combined then best else
-                            runBlueprint (L.head combined) combined
-                    else
-                        let [onparBest, subparBest] = L.head <$> [ xOnpar, xSubpar ]
-                            combinedBest = min onparBest subparBest
-                            (onpar1, subpar1) = L.partition (\st -> st <= combinedBest) combined
-                            topBest = runBlueprint combinedBest onpar1
-                            bottomBest = runBlueprint topBest subpar1
-                        in min topBest bottomBest
+runBlueprint :: State -> State
+runBlueprint state = go Nothing [state] S.empty
+    where
+        go :: Maybe State -> [State] -> S.Set State -> State
+        go Nothing [] _ = error "This shouldn't have happened!"
+        go (Just best) [] _ = best
+        go bestem togo@(candidate:rest) beenTo = 
+            if candidate ^. sRound == 0 
+                then 
+                    let newBest = maybe candidate (min candidate) bestem
+                        (left, beenTo1) = L.partition (\s -> not (s `S.member` beenTo || noHopeVs newBest s)) rest
+                    in go (Just newBest) left (beenTo `S.union` S.fromList (newBest:beenTo1))
+                else 
+                    let expanded = next candidate
+                        maxGeode = maybe 0 (\s -> s ^. geodeCount) bestem
+                        stats = show [L.length togo, maxGeode ]
+                    in trace stats $ go bestem (PQ.nub $ PQ.union rest expanded) beenTo
 
-worthy best candidate = 
-    let projectedCandidate = candidate ^. geodeCount + (candidate ^. geodeRobots + 1) * candidate ^. sRound
-        projectedBest = best ^. geodeCount + (best ^. geodeRobots) * best ^. sRound
-        shouldFilter = best ^. geodeCount > 0
-    in 
-        if shouldFilter 
-            then projectedCandidate >= projectedBest || candidate ^. geodeRobots >= best ^. geodeRobots -- not enough robots
-            else True
-        -- byGeoCnt sts = if best ^. geodeRobots > 0 then PQ.filter (\st -> st ^. geodeRobots > 0) sts else sts
-        -- byObsCnt sts = if best ^. obsidianRobots > 0 then PQ.filter (\st -> st ^. obsidianRobots > 0 || st ^. clayRobots > 0 ) sts else sts
-        
+noHopeVs :: State -> State -> Bool
+noHopeVs mx st = trace (show [mx, st]) $ mxGeodeCnt > 0 && (st == mx || wontCatchup || minute1)
+     -- no point comparing against 0
+    where
+        geodeCnt = st ^. geodeCount
+        mxGeodeCnt = mx ^. geodeCount
+        wontCatchup = geodeCnt + sum [1..st ^. sRound - 1] <= mxGeodeCnt -- can't possibly catch up
+        minute1 = (st ^. sRound) == 1 && (st ^. geodeRobots) <= mxGeodeCnt - geodeCnt -- not enough production to make up 
 
 runGroup :: [Blueprint] -> Int
 runGroup bps = 
@@ -244,7 +262,7 @@ runGroup bps =
         indexed = zip [1..] bps
         totalGeode bp = 
             let initSt = initialState bp
-                best = runBlueprint initSt (L.singleton $ initSt)
+                best = runBlueprint initSt
             in best ^. geodeCount
 
 testBlueprints :: [Blueprint]
