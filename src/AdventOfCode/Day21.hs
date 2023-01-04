@@ -2,6 +2,8 @@ module AdventOfCode.Day21 where
 
 import Text.Parsec
 import qualified Data.Map as M
+import Data.Bifunctor (bimap)
+import Control.Monad (join)
 
 data Op = Plus | Minus | Multi | Div deriving (Eq, Show)
 data Expr = Lit Int | Fn Op String String deriving (Eq, Show)
@@ -13,9 +15,32 @@ fn op = case op of
             Multi -> (*)
             Div -> div
 
-eval :: M.Map String Expr -> Expr -> Int
-eval ms (Lit n) = n
-eval ms (Fn op v1 v2) = (fn op) (eval ms $ ms M.! v1) (eval ms $ ms M.! v2)
+eval :: (String -> Maybe Expr) -> Expr -> Maybe Int
+eval getExpr (Lit n) = Just n
+eval getExpr (Fn op v1 v2) = 
+    let [ex1, ex2] = (\x -> getExpr x >>= eval getExpr) <$> [v1, v2]
+    in fn op <$> ex1 <*> ex2
+
+-- m is the result, n is the 2nd param, solve for the 1st param
+revOp1 Plus m n = m - n
+revOp1 Minus m n = m + n
+revOp1 Multi m n = m `div` n
+revOp1 Div m n = m * n
+
+-- n is the first param, m is result, solve for 2nd param
+revOp2 Plus m n = m - n
+revOp2 Minus m n = n - m
+revOp2 Multi m n = m `div` n
+revOp2 Div m n = n `div` m
+
+lave :: (String -> Maybe Expr) -> Int -> Expr -> Maybe Int
+lave getExpr m (Lit n) = Just n
+lave getExpr m (Fn op "humn" v2) = let (Just n) = getExpr v2 >>= eval getExpr in Just $ revOp1 op m n
+lave getExpr m (Fn op v1 "humn") = let (Just n) = getExpr v1 >>= eval getExpr in Just $ revOp2 op m n
+lave getExpr m (Fn op v1 v2) =
+    case (\x -> getExpr x >>= eval getExpr) <$> [v1, v2] of
+        [ex1@(Just n), Nothing] -> getExpr v2 >>= lave getExpr (revOp2 op m n) 
+        [Nothing, ex2@(Just n)] -> getExpr v1 >>= lave getExpr (revOp1 op m n)
 
 type Parser = Parsec String ()
 
@@ -54,7 +79,19 @@ solve raw =
         Left err -> show err
         Right exprs -> 
             let ms = M.fromList exprs 
-            in show $ eval ms (ms M.! "root")
+            in show $ (round1 ms, round2 ms)
+
+round1 ms = eval (Just . (ms M.!)) (ms M.! "root")
+
+round2 ms = 
+    let (Fn op v1 v2) = ms M.! "root"
+        getExpr k = if k == "humn" then Nothing else Just (ms M.! k)
+        [Just expr1, Just expr2] = [ getExpr v1, getExpr v2 ]
+        [r1, r2] = eval getExpr <$> [expr1, expr2]
+    in 
+        case (r1, r2) of
+            (Nothing, Just n) -> lave getExpr n expr1
+            (Just n, Nothing) -> lave getExpr n expr2
 
 testInput = 
     "root: pppw + sjmn\n\
