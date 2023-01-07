@@ -44,7 +44,7 @@ eval [] _ cur = cur
 eval (m:ms) mx cur = 
     case m of 
         Turn clk -> eval ms mx (sDir %~ makeTurn clk $ cur)
-        Step n -> let c1 = takeSteps (traceShowId cur) (trace ("Take " ++ show n ++ " steps") n) mx in eval ms mx c1
+        Step n -> let c1 = takeSteps cur n mx in eval ms mx c1
 
 takeSteps :: Cursor -> Int -> M.Matrix Char -> Cursor
 takeSteps cur n mx = sPos .~ stepped $ cur 
@@ -55,37 +55,15 @@ takeSteps cur n mx = sPos .~ stepped $ cur
         col = V.toList $ M.getCol c mx
         row = V.toList $ M.getRow r mx
         go xs idx0 incr setter = 
-            let (idx, path) = traceShowId $ extractPath idx0 xs 
-                idx1 = translateWS xs $ trace ("After taking steps ") $ traceShowId $ stepN path idx incr
+            let (idx, path) = extractPath idx0 xs 
+                idx1 = translateWS xs $ stepN path idx incr
             in setter .~ idx1 $ pos
         stepped = 
             case direction of
                 Downn -> go col r n _1
-                    -- let (idx, path) = extractPath r col 
-                    --     r1 = translateWS col $ stepN path idx n
-                    -- in (r1, c)
                 Upp -> go col r (0 - n) _1
-                    -- let (idx, path) = extractPath r col 
-                    --     r1 = translateWS col $ stepN path idx (0 - n)
-                    -- in (r1, c)
                 Rightt -> go row c n _2
-                    -- let (idx, path) = traceShowId $ extractPath c row 
-                    --     c1 = traceShowId $ translateWS row $ stepN path idx n
-                    -- in (r, c1)
                 Leftt -> go row c (0 - n) _2
-                    -- let (idx, path) = extractPath c row 
-                    --     c1 = translateWS row $ stepN path idx (0 - n)
-                    -- in (r, c1)
-
--- checkSteps :: M.Matrix Char -> Cursor -> Int -> Int
--- checkSteps mx cur n = min maxN n `mod` len
---     where
---         maxN = 1
---         (r, c) = cur ^. sPos
---         col = V.toList $ M.getCol r mx
---         row = V.toList $ M.getCol c mx
---         (pathWS, path) = 
---         len = L.length path 
 
 testExtractPath = [
     TestCase(assertEqual "Empty" (0, "") (extractPath 1 ""))
@@ -133,15 +111,12 @@ testStepN = [
 stepN xs idx n = 
     case (aheadFree == ahead, behind == behindFree) of
         (True, True) -> (idx + n) `mod` length xs
-        (False, _) -> 
-            let maxN = sign * length aheadFree
-                boundedN = bound n maxN
-            in idx + boundedN
-        (True, _) -> 
-            let maxN = sign * (length aheadFree + length behindFree)
-                boundedN = bound n maxN
-            in (idx + boundedN) `mod` length xs
+        (False, _) -> bounded $ length aheadFree
+        (True, _) -> bounded $ length aheadFree + length behindFree
     where
+        bounded maxN = 
+            let boundedN = bound n $ sign * maxN 
+            in (idx + boundedN) `mod` length xs
         (sign, bound) = if n < 0 then ((-1), max) else (1, min)
         (behind, ahead) = let (b, _:a) = L.splitAt idx xs in if n > 0 then (b, a) else (reverse a, reverse b)
         [aheadFree, behindFree] = fst . span (== '.') <$> [ ahead, behind ]
