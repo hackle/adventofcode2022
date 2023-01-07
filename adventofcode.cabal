@@ -43,6 +43,8 @@ library
         AdventOfCode.Day17
         AdventOfCode.Day19
         AdventOfCode.Day20
+        AdventOfCode.Day21
+        AdventOfCode.Day22
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -62,7 +64,8 @@ library
         data-ordlist,
         parallel,
         lens,
-        pqueue
+        pqueue,
+        HUnit
     hs-source-dirs:   src
     default-language: Haskell2010
 
@@ -82,3 +85,14 @@ executable adventofcodeapp
     hs-source-dirs:   app
     default-language: Haskell2010
     ghc-options: -threaded -rtsopts -with-rtsopts=-N
+
+Test-Suite adventofcode-testsuite
+    type: exitcode-stdio-1.0
+    main-is: Tests.hs
+    default-language: Haskell2010
+    hs-source-dirs: src/AdventOfCode
+    build-depends:        
+        base, 
+        QuickCheck, 
+        HUnit,
+        adventofcode
