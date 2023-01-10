@@ -101,15 +101,29 @@ type FoldedPath = [((Int, Int), Char)]
 
 transformList dir = if dir `elem` [Upp, Leftt] then L.reverse else id
 
-allInPath :: M.Matrix Char -> [Wrap] -> (Int, Int) -> FoldedPath
-allInPath mx wraps pos@(r, c) = go $ transformList Upp $ indexPath pos _1 col
+allInPathTests = [
+    TestCase $ assertEqual "All in all" True allMapped
+    ]
+
+allMapped = 
+    let mx = toMatrix testInput 
+        allInAll = M.mapPos (\pos c -> if c == ' ' then [] else map1 pos) mx &
+                    M.toList &
+                    L.concat
+        map1 pos = allInPath mx testWraps (trace ("Trying " ++ show pos) pos) <$> [ Upp, Downn, Rightt, Leftt ]
+    in all (\xs -> (traceShowId $ length xs) == 16) allInAll
+
+allInPath :: M.Matrix Char -> [Wrap] -> (Int, Int) -> Direction -> FoldedPath
+allInPath mx wraps pos@(r, c) dir = go dir $ transformList dir $ indexPath pos setter (V.toList path)
     where
-        mxLen = M.nrows mx * 4
-        col = V.toList $ M.getCol c mx
-        go (x:xs) = 
-            if L.length xs == mxLen 
-                then xs
-                else let extended = extend mx (x ^. _1._1, c) Upp wraps in go $ xs ++ extended
+        mxLen = trace ("Started from " ++ show pos ++ show dir) $ max (M.ncols mx) (M.nrows mx)
+        (setter, path) = if dir `elem` [Upp, Downn] then (_1, M.getCol c mx) else (_2, M.getRow r mx)
+        go dir done = 
+            if L.length (traceShowId done) >= mxLen 
+                then done
+                else 
+                    let x = let x1 = last done in trace (" Extending from " ++ show x1 ++ show dir) x1
+                        (toDir, extended) = extend mx (x ^. _1) dir wraps in go toDir $ done ++ extended
 
 inRangeTests = [
     TestCase(assertEqual "Same same" True (inRange (1, 1) 1))
@@ -133,15 +147,22 @@ ptInRange ((x1, y1), (x2, y2)) (a, b) = inRange (x1, x2) a && inRange (y1, y2) b
 
 extendTests = [
     TestCase(assertEqual "Up from top" 
-                [((5,4),'#'),((6,4),'.'),((7,4),'.'),((8,4),'.')] 
+                (Downn, [((5,4),'#'),((6,4),'.'),((7,4),'.'),((8,4),'.')])
                 (extend (toMatrix testInput) (1, 9) Upp testWraps))
     , TestCase(assertEqual "Up from bottom" 
-                [((12,9),'.'),((11,9),'.'),((10,9),'.'),((9,9),'.'),((8,9),'.'),((7,9),'.'),((6,9),'#'),((5,9),'.'),((4,9),'.'),((3,9),'#'),((2,9),'.'),((1,9),'.')] 
+                (Upp, [((12,9),'.'),((11,9),'.'),((10,9),'.'),((9,9),'.'),((8,9),'.'),((7,9),'.'),((6,9),'#'),((5,9),'.'),((4,9),'.'),((3,9),'#'),((2,9),'.'),((1,9),'.')])
                 (extend (toMatrix testInput) (8, 4) Downn testWraps))
+    , TestCase(assertEqual "Row to col"
+                (Downn, [((9,15),'.'),((10,15),'.'),((11,15),'.'),((12,15),'#')])
+                (extend (toMatrix testInput) (6, 12) Rightt testWraps))
+    , TestCase(assertEqual "Down to left"
+                (Upp, [((8,2),'.'),((7,2),'.'),((6,2),'.'),((5,2),'.')])
+                (extend (toMatrix testInput) (12, 11) Downn testWraps))
     ]
-extend :: M.Matrix Char -> (Int, Int) -> Direction -> [Wrap] -> FoldedPath
+extend :: M.Matrix Char -> (Int, Int) -> Direction -> [Wrap] -> (Direction, FoldedPath)
 extend mx pos@(r, c) dir wraps = 
-    let (Just w) = L.find (\w -> inRange (w ^. wFrom) pos && dir == w ^. wFromDir) wraps
+    let w = maybe (error $ "Nothing found for " ++ show pos ++ show dir) id $ 
+            L.find (\w -> inRange (w ^. wFrom) pos && dir == w ^. wFromDir) wraps
         pos1@(r1, c1) = findWrap mx pos w 
         toDir = w ^. wToDir
         (posSetter, path) = 
@@ -150,7 +171,8 @@ extend mx pos@(r, c) dir wraps =
                 else (_1, M.getCol c1 mx)
     in V.toList path &
         indexPath pos1 posSetter &
-        transformList toDir
+        transformList toDir &
+        trace ("Extended for " ++ show pos ++ show dir ++ show w) . ((,) toDir)
 
 indexPathTests = [
     TestCase(assertEqual "" [] (indexPath (1, 1) _1 []))
@@ -175,12 +197,22 @@ mkRangeTests = [
 mkRange (x1, y1) (x2, y2) = [(x, y) | x <- mk1 x1 x2, y <- mk1 y1 y2 ]
     where mk1 a b = if a < b then [a..b] else L.reverse [b..a]
 
-
 testWraps = [
-    -- (((1, 9), (4, 9), Leftt), ((5, 5), (8, 8), Downn))
-    -- ,(((1, 12), (4, 12), Rightt), ((9, 13), (9, 16), Downn))
-    Wrap { _wFrom = ((1, 9), (1, 12)), _wFromDir = Upp,  _wTo = ((5, 4), (5, 1)), _wToDir = Downn }
+    Wrap { _wFrom = ((5, 1), (5, 4)), _wFromDir = Upp, _wTo = ((1, 12), (1, 9)), _wToDir = Downn }
+    , Wrap { _wFrom = ((5, 5), (5, 8)), _wFromDir = Upp, _wTo = ((1, 9), (4, 9)), _wToDir = Rightt }
+    , Wrap { _wFrom = ((1, 9), (4, 9)), _wFromDir = Leftt, _wTo = ((5, 5), (5, 8)), _wToDir = Downn }
+    , Wrap { _wFrom = ((1, 12), (4, 12)), _wFromDir = Rightt, _wTo = ((9, 16), (16, 16)), _wToDir = Leftt }
+    , Wrap { _wFrom = ((9, 16), (16, 16)), _wFromDir = Rightt, _wTo = ((1, 12), (4, 12)), _wToDir = Leftt }
+    , Wrap { _wFrom = ((1, 9), (1, 12)), _wFromDir = Upp,  _wTo = ((5, 4), (5, 1)), _wToDir = Downn }
+    , Wrap { _wFrom = ((5, 12), (8, 12)), _wFromDir = Rightt, _wTo = ((9, 16), (9, 13)), _wToDir = Downn }
+    , Wrap { _wFrom = ((9, 16), (9, 13)), _wFromDir = Upp, _wTo = ((5, 12), (8, 12)), _wToDir = Leftt }
     , Wrap { _wFrom = ((8, 4), (8, 1)), _wFromDir = Downn,  _wTo = ((12, 9), (12, 12)), _wToDir = Upp }
+    , Wrap { _wFrom = ((8, 5), (8, 8)), _wFromDir = Downn,  _wTo = ((12, 9), (9, 9)), _wToDir = Rightt }
+    , Wrap { _wFrom = ((12, 9), (12, 12)), _wFromDir = Downn,  _wTo = ((8, 4), (8, 1)), _wToDir = Upp }
+    , Wrap { _wFrom = ((12, 13), (12, 16)), _wFromDir = Downn,  _wTo = ((8, 1), (5, 1)), _wToDir = Rightt }
+    , Wrap { _wFrom = ((9, 9), (12, 9)), _wFromDir = Leftt,  _wTo = ((8, 8), (8, 5)), _wToDir = Upp }
+    , Wrap { _wFrom = ((5, 1), (8, 1)), _wFromDir = Leftt,  _wTo = ((12, 16), (12, 13)), _wToDir = Upp }
+    -- , Wrap { _wFrom = ((8, 1), (8, 4)), _wFromDir = Downn,  _wTo = ((12, 12), (12, 9)), _wToDir = Upp }
     -- ,(((5, 5), (5, 8), Upp), ((1, 9), (4, 9), Rightt))
     -- ,(((8, 5), (8, 8), Downn), (()))
     -- , ()
@@ -264,6 +296,7 @@ tests = concat [
     , extendTests
     , mkRangeTests
     , indexPathTests
+    , allInPathTests
     ]
 
 testMoves = "10R5L5R10L4R5L5"
