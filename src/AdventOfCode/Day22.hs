@@ -53,9 +53,33 @@ initCursor mx = Cursor { _sPos = (startPos mx), _sDir = Rightt }
 eval :: [Move] -> M.Matrix Char -> Cursor -> Cursor
 eval [] _ cur = cur
 eval (m:ms) mx cur = 
-    case m of 
+    case (traceShowId m) of 
         Turn clk -> eval ms mx (sDir %~ makeTurn clk $ cur)
-        Step n -> let c1 = takeSteps cur n mx in eval ms mx c1
+        Step n -> let c1 = takeSteps2 testWraps cur n mx in eval ms mx c1
+
+takeSteps2 :: [Wrap] -> Cursor -> Int -> M.Matrix Char -> Cursor
+takeSteps2 wraps cur n mx = sDir .~ endDir $ sPos .~ endPos $ cur
+    where 
+        pos = cur ^. sPos
+        direction = cur ^. sDir
+        (r, c) = cur ^. sPos
+        indexedPath = transformList direction $ allInPath mx wraps pos direction
+        coords = (^. _1) <$> indexedPath 
+        steps = (^. _3) <$> indexedPath
+        Just idx = L.findIndex (\(p, _, _) -> p == cur ^. sPos) indexedPath
+        go incr = 
+            let idx1 = stepN steps idx incr
+                stoppedAt = indexedPath !! idx1
+                stats = "From " ++ show cur ++ "Path is " ++ show steps ++ "Stopped at " ++ show stoppedAt ++
+                        "From Index " ++ show idx ++ " To index " ++ show idx1
+            in trace stats stoppedAt
+        (endPos, endDir, _) = 
+            case direction of
+                Downn -> go n
+                Upp -> go (0 - n)
+                Rightt -> go n
+                Leftt -> go (0 - n)
+
 
 takeSteps :: Cursor -> Int -> M.Matrix Char -> Cursor
 takeSteps cur n mx = sPos .~ stepped $ cur 
@@ -97,7 +121,7 @@ testTranslate = [
 translateWS xs idx = idx + L.length ws + 1   -- +1 for Vector is 0 based Matrix is 1
     where (ws, _) = L.span (==' ') xs
 
-type FoldedPath = [((Int, Int), Char)]
+type FoldedPath = [((Int, Int), Direction, Char)]
 
 transformList dir = if dir `elem` [Upp, Leftt] then L.reverse else id
 
@@ -110,19 +134,19 @@ allMapped =
         allInAll = M.mapPos (\pos c -> if c == ' ' then [] else map1 pos) mx &
                     M.toList &
                     L.concat
-        map1 pos = allInPath mx testWraps (trace ("Trying " ++ show pos) pos) <$> [ Upp, Downn, Rightt, Leftt ]
-    in all (\xs -> (traceShowId $ length xs) == 16) allInAll
+        map1 pos = allInPath mx testWraps pos <$> [ Upp, Downn, Rightt, Leftt ]
+    in all (\xs -> length xs == 16) allInAll
 
 allInPath :: M.Matrix Char -> [Wrap] -> (Int, Int) -> Direction -> FoldedPath
-allInPath mx wraps pos@(r, c) dir = go dir $ transformList dir $ indexPath pos setter (V.toList path)
+allInPath mx wraps pos@(r, c) dir = go dir $ transformList dir $ indexPath pos dir setter (V.toList path)
     where
-        mxLen = trace ("Started from " ++ show pos ++ show dir) $ max (M.ncols mx) (M.nrows mx)
+        mxLen = max (M.ncols mx) (M.nrows mx)
         (setter, path) = if dir `elem` [Upp, Downn] then (_1, M.getCol c mx) else (_2, M.getRow r mx)
         go dir done = 
-            if L.length (traceShowId done) >= mxLen 
+            if L.length done >= mxLen 
                 then done
                 else 
-                    let x = let x1 = last done in trace (" Extending from " ++ show x1 ++ show dir) x1
+                    let x = last done
                         (toDir, extended) = extend mx (x ^. _1) dir wraps in go toDir $ done ++ extended
 
 inRangeTests = [
@@ -147,16 +171,17 @@ ptInRange ((x1, y1), (x2, y2)) (a, b) = inRange (x1, x2) a && inRange (y1, y2) b
 
 extendTests = [
     TestCase(assertEqual "Up from top" 
-                (Downn, [((5,4),'#'),((6,4),'.'),((7,4),'.'),((8,4),'.')])
+                (Downn, [((5,4),Downn, '#'),((6,4),Downn, '.'),((7,4),Downn, '.'),((8,4),Downn, '.')])
                 (extend (toMatrix testInput) (1, 9) Upp testWraps))
     , TestCase(assertEqual "Up from bottom" 
-                (Upp, [((12,9),'.'),((11,9),'.'),((10,9),'.'),((9,9),'.'),((8,9),'.'),((7,9),'.'),((6,9),'#'),((5,9),'.'),((4,9),'.'),((3,9),'#'),((2,9),'.'),((1,9),'.')])
+                (Upp, [((12,9),Upp, '.'),((11,9),Upp, '.'),((10,9),Upp, '.'),((9,9),Upp, '.'),((8,9),Upp, '.'),((7,9),Upp, '.'),((6,9),Upp, '#'),
+                        ((5,9),Upp, '.'),((4,9),Upp, '.'),((3,9),Upp, '#'),((2,9),Upp, '.'),((1,9),Upp, '.')])
                 (extend (toMatrix testInput) (8, 4) Downn testWraps))
     , TestCase(assertEqual "Row to col"
-                (Downn, [((9,15),'.'),((10,15),'.'),((11,15),'.'),((12,15),'#')])
+                (Downn, [((9,15), Downn, '.'),((10,15), Downn, '.'),((11,15), Downn, '.'),((12,15), Downn, '#')])
                 (extend (toMatrix testInput) (6, 12) Rightt testWraps))
     , TestCase(assertEqual "Down to left"
-                (Upp, [((8,2),'.'),((7,2),'.'),((6,2),'.'),((5,2),'.')])
+                (Upp, [((8,2), Upp, '.'),((7,2), Upp, '.'),((6,2), Upp, '.'),((5,2), Upp, '.')])
                 (extend (toMatrix testInput) (12, 11) Downn testWraps))
     ]
 extend :: M.Matrix Char -> (Int, Int) -> Direction -> [Wrap] -> (Direction, FoldedPath)
@@ -170,16 +195,16 @@ extend mx pos@(r, c) dir wraps =
                 then (_2, M.getRow r1 mx) 
                 else (_1, M.getCol c1 mx)
     in V.toList path &
-        indexPath pos1 posSetter &
+        indexPath pos1 toDir posSetter &
         transformList toDir &
-        trace ("Extended for " ++ show pos ++ show dir ++ show w) . ((,) toDir)
+        ((,) toDir)
 
 indexPathTests = [
-    TestCase(assertEqual "" [] (indexPath (1, 1) _1 []))
-    , TestCase(assertEqual "Rows, 2 WS on each end" [((3, 1), '.'), ((4, 1), '.'), ((5, 1), '#'), ((6, 1), '.')] (indexPath (1, 1) _1 "  ..#.  "))
-    , TestCase(assertEqual "Cols, 2 WS on each end" [((1, 3), '.'), ((1, 4), '.'), ((1, 5), '#'), ((1, 6), '.')] (indexPath (1, 1) _2 "  ..#.  "))
+    TestCase(assertEqual "" [] (indexPath (1, 1) Upp _1 []))
+    , TestCase(assertEqual "Rows, 2 WS on each end" [((3, 1), Upp, '.'), ((4, 1), Upp, '.'), ((5, 1), Upp, '#'), ((6, 1), Upp, '.')] (indexPath (1, 1) Upp _1 "  ..#.  "))
+    , TestCase(assertEqual "Cols, 2 WS on each end" [((1, 3), Upp, '.'), ((1, 4), Upp, '.'), ((1, 5), Upp, '#'), ((1, 6), Upp, '.')] (indexPath (1, 1) Upp _2 "  ..#.  "))
     ]
-indexPath pos setter vs = [(setter .~ i $ pos, x) | (i, x) <- ndexed, x /= ' ']
+indexPath pos dir setter vs = [(setter .~ i $ pos, dir, x) | (i, x) <- ndexed, x /= ' ']
     where 
         ndexed = zip [1..] vs
 
