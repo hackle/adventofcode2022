@@ -14,6 +14,9 @@ import Debug.Trace
 import Data.Function ((&))
 import qualified Data.Map as Mp
 import Data.Foldable
+import Data.Tuple (swap)
+import Data.Maybe (fromMaybe)
+import Control.Monad (mplus)
 
 type MoveFn = (Int, Int) -> Int -> (Int, Int) 
 
@@ -21,7 +24,7 @@ data Clock = CW | CCW deriving (Eq, Show)
 
 data Move = Turn Clock | Step Int deriving (Eq, Show)
 
-data Direction = Upp | Rightt  | Downn | Leftt deriving (Eq, Show, Enum, Bounded) -- clockwise
+data Direction = Upp | Rightt  | Downn | Leftt deriving (Eq, Show, Enum, Bounded, Ord) -- clockwise
 
 data Cursor = Cursor { _sPos :: (Int, Int), _sDir :: Direction } deriving (Eq, Show)
 
@@ -31,6 +34,13 @@ data Wrap = Wrap {
     , _wTo :: ((Int, Int), (Int, Int))
     , _wToDir :: Direction
     } deriving (Show, Eq)
+
+instance Ord Wrap where
+    wa `compare` wb = 
+        (_wFrom wa) `compare` (_wFrom wb) <> 
+        (_wTo wa) `compare` (_wTo wb) <> 
+        (_wFromDir wa) `compare` (_wFromDir wb) <> 
+        (_wToDir wa) `compare` (_wToDir wb)
 
 makeLenses ''Wrap
 
@@ -392,82 +402,123 @@ wrapInput2 =
     \qrst  \n\
     \uv    \n\
     \wx    "
-
-
-sliceUp :: M.Matrix Char -> [M.Matrix ((Int, Int))]
-sliceUp mx = [ M.submatrix r (r + blockSize - 1) c (c + blockSize - 1) withKey 
-                    | r <- [1, (blockSize + 1) .. (rows - 1)], 
-                      c <- [1, (blockSize + 1) .. (cols - 1)],
-                      mx M.! (r, c) /= ' ' ]
-    where
-        rows = M.nrows mx
-        cols = M.ncols mx
+    
+findEdges mx = 
+    [ l |   r <- [0, blockSize..rows - 1], 
+            c <- [0, blockSize..cols - 1],
+            l <- boxLines r c,
+            not (isEmpty (fst l) || isSolid l) ]
+    where 
+        boxLines r c = 
+            let p1 = (r + 1, c + 1)
+                p2 = (r + blockSize, c + 1)
+                p3 = (r + 1, c + blockSize)
+                p4 = (r + blockSize, c + blockSize)
+            in [(p1, p2), (p1, p3), (p2, p4), (p3, p4)]
+        (rows, cols) = (M.nrows mx, M.ncols mx)
         blockSize = max rows cols `div` 4
-        withKey = M.mapPos const mx
+        isEmpty p = let x = uncurry M.safeGet p mx in maybe True (== ' ') x
+        isSolid ((r1, c1), (r2, c2)) =
+            if r1 == r2 -- horizontal
+                then not (isEmpty (r1 + 1, c1) || isEmpty (r1 - 1, c1))
+                else not (isEmpty (r1, c1 + 1) || isEmpty (r1, c1 - 1))
 
-rotate mx dir   | dir == CW = mapRows (\r -> V.reverse $ M.getCol r mx) mx
-                | otherwise = mapRows (`M.getCol` mx) mx
+-- stitch :: M.Matrix Char -> [LineSeg] -> Mp.Map LineSeg LineSeg
+stitch mx edges = 
+    let rights = concat [[(l1, l2), (l2, l1)] | l1 <- edges, l2 <- edges, l1 /= l2, isRight l1 l2 && isEmpty l1 l2]
+        m1 = Mp.fromList rights
+        left1 = edges L.\\ Mp.keys m1
+        (left2, extensions) = Mp.foldlWithKey findExtension (left1, []) m1
+        m2 = Mp.union (Mp.fromList extensions) m1
+        (left3, extensions1) = Mp.foldlWithKey findExtension (left2, []) m2 -- no recursion as this is finite
+        m3 = Mp.union (Mp.fromList extensions1) m2
+        m4 = case left3 of
+                [] -> m3
+                [l1, l2] -> m3 `Mp.union` Mp.fromList [(l1, l2), (l2, l1)]
+                _ -> error "Bloody unlikely"
+        in Mp.foldMapWithKey (toWrap mx) m4
+    where 
+        (rows, cols) = (M.nrows mx, M.ncols mx)
+        blockSize = min rows cols `div` 3
+        isEmpty ((a, b), (c, d)) ((e, f), (g, h)) = 
+            let mid = if a == c then (e, b) else (a, f) -- if a == c then f == h (as a result of isRight)
+            in mx M.! mid == ' '
+        findExtension (rest, done) l1 l2 = 
+            let found = concat [ [(l3, l4), (l4, l3)] | l3 <- rest, l4 <- rest, isExtended l1 l3 && areJoined l2 l4 ]
+            in (rest L.\\ concatMap unpack found, found ++ done) 
+        isRight :: LineSeg -> LineSeg -> Bool
+        isRight l1 l2 = 
+            let ((a, b), (c, d)) = lineDistance l1 l2 
+            in L.sort [a, b, c, d] == [1, 1, blockSize, blockSize]
+
+toWrap mx l1@((r1, c1), (r2, c2)) l2@((r3, c3), (r4, c4)) =
+    let (la, lb) = 
+            if distance (r1, c1) (r3, c3) < distance (r1, c1) (r4, c4)
+                then (l1, l2)
+                else (l1, swap l2)
+        (dFrom, dTo) = getDir mx l1 l2 
+    in [ Wrap { _wFrom = l1, _wTo = l2, _wFromDir = dFrom, _wToDir = dTo },
+         Wrap { _wFrom = l2, _wTo = l1, _wFromDir = rev dTo, _wToDir = rev dFrom }
+        ]
+
+rev Upp = Downn
+rev Downn = Upp
+rev Rightt = Leftt
+rev Leftt = Rightt
+
+-- by now we know dist (p1, p3) <= dist (p2, p4) 
+-- ghci> getDir 8 6 ((1, 5), (1, 6)) ((8, 5), (8, 6))
+-- (Upp,Downn)
+-- ghci> getDir 6 8 ((5, 1), (6, 1)) ((3, 8), (4, 8))
+-- (Upp,Downn)
+getDir mx l1@(pa, pb) l2@(pc, pd) =
+    let out1 = outDir l1
+        out2 = outDir l2
+    in (out1, rev out2)
     where
-        transf = if dir == CW then id else L.reverse
-        mapRows f mx = M.fromLists $ V.toList . f <$> transf [1..M.nrows mx]
-        -- mapCols f mx = M.fromLists $ (V.toList . f) <$> [1..M.ncols mx]
+        outDir l@((r1, c1), (r2, c2)) | r1 == r2 = if fromMaybe ' ' (M.safeGet (r1 + 1) c1 mx) == ' ' then Downn else Upp
+                                      | c1 == c2 = if fromMaybe ' ' (M.safeGet r1 (c1 + 1) mx) == ' ' then Rightt else Leftt
+                                      | otherwise = error "This shall not happen as lines must be horizontal or vertical"
+        -- blockSize = min rows cols `div` 3
+        -- ((r1, c1), (r2, c2), (r3, c3), (r4, c4)) = (pa, pb, pc, pd)
+        -- asExtremes  | [ abs (r1 - r3), abs (r2 - r4) ] == [rows - 1, rows - 1] -- top down
+        --                     = Just (if r1 < r3 then (Upp, Downn) else (Downn, Upp))
+        --             | [ abs (c1 - c3), abs (c2 - c4) ] == [cols - 1, cols - 1] -- left right
+        --                     = Just (if c1 < c3 then (Leftt, Rightt) else (Rightt, Leftt))
+        --             | otherwise = Nothing
+        -- -- presumed not at extremes
+        -- asParallel  | abs (r1 - r3) == abs (r2 - r4) -- rows in parallel
+        --                     = Just $ if 1 `elem` [r1, r3] 
+        --                                 then (Upp, Downn)   -- both at top
+        --                                 else (Downn, Upp)   -- must be at bottom
+        --             | abs (c1 - c3) == abs (c2 - c4) -- cols
+        --                     = Just $ if 1 `elem` [c1, c3]
+        --                                 then (Leftt, Rightt)    -- both on left
+        --                                 else (Rightt, Leftt)    -- bot on right
+        --             | otherwise = Nothing
+        -- atAngle | [ abs (r1 - r3), abs (c1 - c3) ] == [1, 1]
+        --             =   case ((r4 - r2) `div` blockSize, (c4 - c2) `div` blockSize) of
+        --                     (1, 1) -> Just (Downn, Rightt)
+        --                     (1, -1) -> Just (Downn, Leftt)
+        --                     (-1, 1) -> Just (Upp, Rightt)
+        --                     (-1, -1) -> Just (Upp, Leftt)
+        --         | otherwise = Nothing
+        -- asExtension | 
 
--- if 4 blocks are inlined then it's ready for folding
-isNormalised :: [M.Matrix (Int, Int)]  -> Bool
-isNormalised mxs = any (\mx -> 4 == length (filter (alignedWith mx) mxs)) mxs
-    where 
-        alignedWith m1 m2 = 
-            let (r1, c1) = m1 M.! (1, 1)
-                (r2, c2) = m2 M.! (1, 1)
-            in r1 == r2 || c1 == c2
+unpack (l1, l2) = [l1, l2]
 
-rangeOf mx = (tl, br)
-    where 
-        tl= mx M.! (1, 1)
-        br = mx M.! (M.nrows mx, M.ncols mx)
+areJoined (p1, p2) (p3, p4) = L.length (L.nub [p1, p2, p3, p4]) == 3
+
+isExtended (p1, p2) (p3, p4) = 
+    let (d1, d2) = lineDistance (p1, p2) (p3, p4)
+        (d3, d4) = lineDistance (p2, p1) (p3, p4)
+    in any (`elem` [d1, d2, d3, d4]) [(0, 1), (1, 0)]
+
+type Coord = (Int, Int)
+type LineSeg = (Coord, Coord)
         
-distance (c, d) (a, b) = (c - a, d - b)
-distanceRange (c, d) (a, b) = (distance a c, distance b d)
+distance :: Coord -> Coord -> (Int, Int)
+distance (c, d) (a, b) = (abs (c - a), abs (d - b))
 
-isCentred mx mx1 = 
-    let v = mx1 M.! (1, 1) 
-        centre = centreBlock mx
-    in ptInRange centre v
-
-centreBlock BS{blockSize, rows, cols, spine} = 
-    case spine of
-        Col -> ((1, blockSize + 1), (rows, blockSize * 2))    -- 4 rows
-        Row -> ((blockSize + 1, 1), (blockSize * 2, cols))    -- 3 rows
-        -- 4 rows, 3 cols: centre by col, compare by
-
-data Spine = Row | Col deriving (Eq, Show)
-
-data BlockSummary = BS { 
-    cols :: Int, 
-    rows :: Int, 
-    blockSize :: Int, 
-    spine :: Spine,
-    slices :: [M.Matrix (Int, Int)]
-    } deriving (Eq, Show)
-
-bs mx = BS { 
-    cols = cols, 
-    rows = rows, 
-    blockSize = min rows cols `div` 3, 
-    spine = if rows < cols then Row else Col,
-    slices = sliceUp mx 
-    }
-    where
-        rows = M.nrows mx
-        cols = M.ncols mx
-
-stitch raw = 
-    let mx = toMatrix raw
-        summary@BS{slices, spine} = bs mx
-        centre = centreBlock summary
-        distances = distanceRange centre . rangeOf <$> slices
-        (inline, outofline) = L.partition isInline zip slices distances
-        isInline (_, (distTL, distBR)) = 
-            [0, 0] == (if spine == Row then fst else snd) [ distTL, distBR ]
-        stitch1 (coords, (distTL, distBR)) = 
-    in stitch1 <$> outofline 
+lineDistance :: LineSeg -> LineSeg -> (Coord, Coord)
+lineDistance (c, d) (a, b) = (distance a c, distance b d)
