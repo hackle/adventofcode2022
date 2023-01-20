@@ -11,7 +11,8 @@ main = do
     [] -> putStrLn "First argument should be filename to input"
     fileName:_ -> do
       contents <- readFile fileName
-      putStrLn $ show $ solve contents prodMoves prodWraps
+      let mx = toMatrix contents
+      print $ show $ solve contents prodMoves (stitch mx $ findEdges mx)
       -- putStrLn $ show $ let State{sMemoTop=smt, sTop=st} = keepFalling (initialState (concat $ repeat jetPatterns)) 2022 in smt + fromIntegral st
       -- putStrLn $ show $ bridgeCross 10 contents
       -- putStrLn $ show $ treeHouse contents

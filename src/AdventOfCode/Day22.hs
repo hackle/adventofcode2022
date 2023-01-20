@@ -14,9 +14,9 @@ import Debug.Trace
 import Data.Function ((&))
 import qualified Data.Map as Mp
 import Data.Foldable
-import Data.Tuple (swap)
-import Data.Maybe (fromMaybe)
-import Control.Monad (mplus)
+import Data.Tuple (swap, uncurry)
+import Data.Maybe (fromMaybe, isJust)
+import Control.Monad (mplus, liftM2)
 
 type MoveFn = (Int, Int) -> Int -> (Int, Int) 
 
@@ -64,7 +64,7 @@ initCursor mx = Cursor { _sPos = (startPos mx), _sDir = Rightt }
 eval :: [Move] -> M.Matrix Char -> [Wrap] -> Cursor -> Cursor
 eval [] _ _ cur = cur
 eval (m:ms) mx wraps cur = 
-    case (traceShowId m) of 
+    case m of 
         Turn clk -> eval ms mx wraps (sDir %~ makeTurn clk $ cur)
         Step n -> let c1 = takeSteps2 wraps cur n mx in eval ms mx wraps c1
 
@@ -83,7 +83,7 @@ takeSteps2 wraps cur n mx = sDir .~ endDir $ sPos .~ endPos $ cur
                 stoppedAt = indexedPath !! idx1
                 stats = "From " ++ show cur ++ "Path is " ++ show steps ++ "Stopped at " ++ show stoppedAt ++
                         "From Index " ++ show idx ++ " To index " ++ show idx1
-            in trace stats stoppedAt
+            in stoppedAt
         (endPos, endDir, _) = 
             case direction of
                 Downn -> go n
@@ -220,7 +220,7 @@ indexPath pos dir setter vs = [(setter .~ i $ pos, dir, x) | (i, x) <- ndexed, x
     where 
         ndexed = zip [1..] vs
 
-findWrap mx pos w = trace ("findWrap " ++ show pos ++ show w) withIndex Mp.! pos 
+findWrap mx pos w = withIndex Mp.! pos 
     where
         withIndex = Mp.fromList $ zip (uncurry mkRange (w ^. wFrom)) (uncurry mkRange (w ^. wTo))
 
@@ -425,40 +425,45 @@ findEdges mx =
 
 -- stitch :: M.Matrix Char -> [LineSeg] -> Mp.Map LineSeg LineSeg
 stitch mx edges = 
-    let rights = concat [[(l1, l2), (l2, l1)] | l1 <- edges, l2 <- edges, l1 /= l2, isRight l1 l2 && isEmpty l1 l2]
+    let rights = [lineUp l1 l2 | l1 <- edges, l2 <- edges, l1 /= l2, isRight l1 l2 && isEmpty l1 l2]
         m1 = Mp.fromList rights
-        left1 = edges L.\\ Mp.keys m1
-        (left2, extensions) = Mp.foldlWithKey findExtension (left1, []) m1
-        m2 = Mp.union (Mp.fromList extensions) m1
-        (left3, extensions1) = Mp.foldlWithKey findExtension (left2, []) m2 -- no recursion as this is finite
-        m3 = Mp.union (Mp.fromList extensions1) m2
-        m4 = case left3 of
-                [] -> m3
-                [l1, l2] -> m3 `Mp.union` Mp.fromList [(l1, l2), (l2, l1)]
-                _ -> error "Bloody unlikely"
-        in Mp.foldMapWithKey (toWrap mx) m4
+        left1 = let taken = Mp.keys m1 in L.filter (\ln -> not $ any (lineEq ln) taken) edges
+        m2 = extend m1 left1
+        in Mp.foldMapWithKey (toWrap mx) m2
     where 
+        extend m1 [] = m1
+        extend m1 lef = 
+            let (lef1, ext1) = Mp.foldlWithKey findExtension (lef, []) m1
+                m2 = Mp.union (Mp.fromList ext1) m1
+            in extend m2 lef1
         (rows, cols) = (M.nrows mx, M.ncols mx)
         blockSize = min rows cols `div` 3
         isEmpty ((a, b), (c, d)) ((e, f), (g, h)) = 
             let mid = if a == c then (e, b) else (a, f) -- if a == c then f == h (as a result of isRight)
             in mx M.! mid == ' '
         findExtension (rest, done) l1 l2 = 
-            let found = concat [ [(l3, l4), (l4, l3)] | l3 <- rest, l4 <- rest, isExtended l1 l3 && areJoined l2 l4 ]
-            in (rest L.\\ concatMap unpack found, found ++ done) 
+            let find1 l3 l4 = liftM2 (,) (isExtended l1 l3) (areJoined l2 l4) `mplus` liftM2 (,) (isExtended l2 l3) (areJoined l1 l4)
+                Just found = sequence $ L.filter isJust [ find1 l3 l4 | l3 <- rest, l4 <- rest, l3 /= l4 ]
+                rest1 = let allFound = concatMap unpack found in L.filter (\ln -> not (any (lineEq ln) allFound)) rest
+                done1 = found ++ done
+            in (rest1, done1)
         isRight :: LineSeg -> LineSeg -> Bool
         isRight l1 l2 = 
             let ((a, b), (c, d)) = lineDistance l1 l2 
             in L.sort [a, b, c, d] == [1, 1, blockSize, blockSize]
 
-toWrap mx l1@((r1, c1), (r2, c2)) l2@((r3, c3), (r4, c4)) =
-    let (la, lb) = 
-            if distance (r1, c1) (r3, c3) < distance (r1, c1) (r4, c4)
-                then (l1, l2)
-                else (l1, swap l2)
-        (dFrom, dTo) = getDir mx l1 l2 
-    in [ Wrap { _wFrom = l1, _wTo = l2, _wFromDir = dFrom, _wToDir = dTo },
-         Wrap { _wFrom = l2, _wTo = l1, _wFromDir = rev dTo, _wToDir = rev dFrom }
+lineEq l1 l2 = l1 == l2 || swap l1 == l2
+
+lineUp l1@(pt1a, pt1b) l2@(pt2a, pt2b) = 
+    let [pt1aa, pt1bb] = L.sortBy (distTo pt2a) [pt1a, pt1b]
+        [pt2aa, pt2bb] = L.sortBy (distTo pt1a) [pt2a, pt2b]
+        distTo pt pt1 pt2 = let dist p = uncurry (+) (distance pt p) in dist pt1 `compare` dist pt2
+    in ((pt1aa, pt1bb), (pt2aa, pt2bb)) -- pt 1 is closest to pt 2, and zipped so
+
+toWrap mx la@(pt1a, pt1b) lb@(pt2a, pt2b) =
+    let (dFrom, dTo) = getDir mx la lb 
+    in [ Wrap { _wFrom = la, _wTo = lb, _wFromDir = dFrom, _wToDir = dTo },
+         Wrap { _wFrom = lb, _wTo = la, _wFromDir = rev dTo, _wToDir = rev dFrom }
         ]
 
 rev Upp = Downn
@@ -479,40 +484,26 @@ getDir mx l1@(pa, pb) l2@(pc, pd) =
         outDir l@((r1, c1), (r2, c2)) | r1 == r2 = if fromMaybe ' ' (M.safeGet (r1 + 1) c1 mx) == ' ' then Downn else Upp
                                       | c1 == c2 = if fromMaybe ' ' (M.safeGet r1 (c1 + 1) mx) == ' ' then Rightt else Leftt
                                       | otherwise = error "This shall not happen as lines must be horizontal or vertical"
-        -- blockSize = min rows cols `div` 3
-        -- ((r1, c1), (r2, c2), (r3, c3), (r4, c4)) = (pa, pb, pc, pd)
-        -- asExtremes  | [ abs (r1 - r3), abs (r2 - r4) ] == [rows - 1, rows - 1] -- top down
-        --                     = Just (if r1 < r3 then (Upp, Downn) else (Downn, Upp))
-        --             | [ abs (c1 - c3), abs (c2 - c4) ] == [cols - 1, cols - 1] -- left right
-        --                     = Just (if c1 < c3 then (Leftt, Rightt) else (Rightt, Leftt))
-        --             | otherwise = Nothing
-        -- -- presumed not at extremes
-        -- asParallel  | abs (r1 - r3) == abs (r2 - r4) -- rows in parallel
-        --                     = Just $ if 1 `elem` [r1, r3] 
-        --                                 then (Upp, Downn)   -- both at top
-        --                                 else (Downn, Upp)   -- must be at bottom
-        --             | abs (c1 - c3) == abs (c2 - c4) -- cols
-        --                     = Just $ if 1 `elem` [c1, c3]
-        --                                 then (Leftt, Rightt)    -- both on left
-        --                                 else (Rightt, Leftt)    -- bot on right
-        --             | otherwise = Nothing
-        -- atAngle | [ abs (r1 - r3), abs (c1 - c3) ] == [1, 1]
-        --             =   case ((r4 - r2) `div` blockSize, (c4 - c2) `div` blockSize) of
-        --                     (1, 1) -> Just (Downn, Rightt)
-        --                     (1, -1) -> Just (Downn, Leftt)
-        --                     (-1, 1) -> Just (Upp, Rightt)
-        --                     (-1, -1) -> Just (Upp, Leftt)
-        --         | otherwise = Nothing
-        -- asExtension | 
 
 unpack (l1, l2) = [l1, l2]
 
-areJoined (p1, p2) (p3, p4) = L.length (L.nub [p1, p2, p3, p4]) == 3
+areJoined (p1, p2) (p3, p4)
+    | p1 == p3 || p2 == p4 = Just (p3, p4) 
+    | p3 == p2 || p1 == p4 = Just (p4, p3)
+    | otherwise = Nothing
 
 isExtended (p1, p2) (p3, p4) = 
     let (d1, d2) = lineDistance (p1, p2) (p3, p4)
         (d3, d4) = lineDistance (p2, p1) (p3, p4)
-    in any (`elem` [d1, d2, d3, d4]) [(0, 1), (1, 0)]
+    in 
+        if any isGold [d1, d2]
+        then Just (p3, p4)
+        else 
+            if any isGold [d3, d4]
+            then Just (p4, p3)
+            else Nothing
+    where isGold pt = pt `elem` [(0, 1), (1, 0)]
+    -- in any (`elem` [d1, d2, d3, d4]) [(0, 1), (1, 0)]
 
 type Coord = (Int, Int)
 type LineSeg = (Coord, Coord)
