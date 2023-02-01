@@ -1,6 +1,6 @@
 module Main where
 
-import AdventOfCode.Day22
+import AdventOfCode.Day23
 import System.Environment
 import System.IO
 
@@ -11,8 +11,7 @@ main = do
     [] -> putStrLn "First argument should be filename to input"
     fileName:_ -> do
       contents <- readFile fileName
-      let mx = toMatrix contents
-      print $ show $ solve contents prodMoves (stitch mx $ findEdges mx)
+      print $ show $ solve2 (toGrid contents)
       -- putStrLn $ show $ let State{sMemoTop=smt, sTop=st} = keepFalling (initialState (concat $ repeat jetPatterns)) 2022 in smt + fromIntegral st
       -- putStrLn $ show $ bridgeCross 10 contents
       -- putStrLn $ show $ treeHouse contents
