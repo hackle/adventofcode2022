@@ -26,31 +26,42 @@ toMap :: Int -> Grid -> [Coord]
 toMap m g = g ^. wind.to (fmap ($ m))
 
 winds g =
-    let mx = g ^. rows * g ^. cols in M.fromList [(n, toMap n g) | n <- [0..mx]]
+    let mx = g ^. rows * g ^. cols
+        maps = [(n, toMap n g) | n <- [0..mx]]
+    in M.fromList maps
 
 instance Show Grid where
     show g = show (toMap 0 g)
 
 neighbours (r, c) = (r, c) : [(r + r1, c + c1) | r1 <- [-1..1], c1 <- [-1..1], abs (r1 - c1) == 1 ]
 
-shortest g = go 0 $ S.fromList [(-1, 0)]
+
+shortest g = foldl (\n (s, e) -> 1 + go n (S.fromList [s]) e) 0 rounds
     where
+        rounds = [(startTopLeft, endBottomRight g), (startBottomRight g, endTopLeft), (startTopLeft, endBottomRight g)]
         ws = winds g
-        go n visited =
+        e = endBottomRight g
+        go n visited end =
             let w = ws M.! (n `mod` length ws)
                 nexts = concatMap (proceed w) (S.toList visited)
                 xs1 = S.fromList (nexts `using` parTraversable rdeepseq)
                 stats = show n ++ ":" ++ show (length xs1)
-            in trace stats $ if S.null $ S.filter (isDone g) xs1 then go (n + 1) xs1 else n
+            in 
+                trace ("Continuing " ++ stats) $
+                if S.null $ S.filter (== end) xs1 
+                    then go (n + 1) xs1 end 
+                    else trace (">>>>>>>Success<<<<< " ++ show n) n
         proceed w x =
             let ns = filter (\x1 -> inRange g x1 && x1 `notElem` w) (x : neighbours x)
             in ns
 
-inRange g (r, c) = (r, c) == (-1, 0) || (r >= 0 && c >= 0 && r < g ^. rows && c < g ^. cols)
+inRange g (r, c) = (r, c) `elem` [ startTopLeft, startBottomRight g ] || (r >= 0 && c >= 0 && r < g ^. rows && c < g ^. cols)
 
-endCoord g = (g ^. rows, g ^. cols - 1)
+endBottomRight g = (g ^. rows - 1, g ^. cols - 1)
+endTopLeft = (0, 0)
 
-isDone g (r, c) = (r + 1, c) == endCoord g
+startTopLeft = (-1, 0)
+startBottomRight g = let (r, c) = endBottomRight g in (r + 1, c)
 
 toGrid raw =
     let middles = takeMiddle <$> takeMiddle (lines raw)
