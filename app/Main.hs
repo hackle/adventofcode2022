@@ -1,6 +1,6 @@
 module Main where
 
-import AdventOfCode.Day24 ( shortest, showG, toGrid )
+import AdventOfCode.Day24 ( shortest, toGrid )
 import System.Environment
 import System.IO
 
@@ -11,7 +11,7 @@ main = do
     [] -> putStrLn "First argument should be filename to input"
     (fileName:_) -> do
       contents <- readFile fileName
-      print $ show $ let g = toGrid contents; p = shortest g in (showG p g, length p )
+      print $ show $ let g = toGrid contents; p = shortest g in p
       -- putStrLn $ show $ let State{sMemoTop=smt, sTop=st} = keepFalling (initialState (concat $ repeat jetPatterns)) 2022 in smt + fromIntegral st
       -- putStrLn $ show $ bridgeCross 10 contents
       -- putStrLn $ show $ treeHouse contents
