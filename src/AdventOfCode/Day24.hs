@@ -45,15 +45,11 @@ shortest g = foldl (\n (s, e) -> 1 + go n (S.fromList [s]) e) 0 rounds
             let w = ws M.! (n `mod` length ws)
                 nexts = concatMap (proceed w) (S.toList visited)
                 xs1 = S.fromList (nexts `using` parTraversable rdeepseq)
-                stats = show n ++ ":" ++ show (length xs1)
             in 
-                trace ("Continuing " ++ stats) $
                 if S.null $ S.filter (== end) xs1 
                     then go (n + 1) xs1 end 
-                    else trace (">>>>>>>Success<<<<< " ++ show n) n
-        proceed w x =
-            let ns = filter (\x1 -> inRange g x1 && x1 `notElem` w) (x : neighbours x)
-            in ns
+                    else n
+        proceed w x = filter (\x1 -> inRange g x1 && x1 `notElem` w) (x : neighbours x)
 
 inRange g (r, c) = (r, c) `elem` [ startTopLeft, startBottomRight g ] || (r >= 0 && c >= 0 && r < g ^. rows && c < g ^. cols)
 
